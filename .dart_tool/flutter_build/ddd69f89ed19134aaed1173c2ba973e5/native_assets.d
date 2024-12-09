@@ -1,0 +1,1 @@
+ C:\\VSCode\\fftcg_companion_app\\.dart_tool\\flutter_build\\ddd69f89ed19134aaed1173c2ba973e5\\native_assets.yaml: 
