@@ -4,4 +4,6 @@
     <exclude domain="database" path="google_app_measurement.db"/>
     <exclude domain="database" path="google_app_measurement_local.db"/>
     <exclude domain="root" path="gcm_key"/>
+    <include domain="sharedpref" path="."/>
+    <exclude domain="sharedpref" path="device.xml"/>
 </full-backup-content>

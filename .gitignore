@@ -16,6 +16,7 @@
 bin/
 gen/
 out/
+codebase_export.txt
 
 # Gradle files
 .gradle/

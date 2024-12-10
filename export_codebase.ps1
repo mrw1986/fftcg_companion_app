@@ -25,7 +25,8 @@ $includePatterns = @(
     "AndroidManifest.xml",
     "proguard-rules.pro",
     "*.properties",
-    "google-services.json"
+    "google-services.json",
+    "*.yaml"
 )
 
 # Create or clear the output file
@@ -43,6 +44,7 @@ function Get-CodeFenceLanguage {
         ".pro"      { "proguard" }
         ".properties" { "properties" }
         ".json"     { "json" }
+        ".yaml"     { "yaml" }
         default     { "text" }
     }
 }

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../enums/auth_status.dart';
@@ -27,11 +26,19 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   }
 
   void _startEmailVerificationCheck() {
+    _emailVerificationTimer?.cancel();
     _emailVerificationTimer = Timer.periodic(
       const Duration(seconds: 5),
       (_) {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null && !user.emailVerified) {
+        final authState = ref.read(authNotifierProvider);
+        final user = authState.user;
+
+        // Only check if we have a non-guest authenticated user who needs verification
+        if (authState.status == AuthStatus.authenticated &&
+            user != null &&
+            !user.isGuest &&
+            !user.isEmailVerified &&
+            user.email != null) {
           ref.read(authNotifierProvider.notifier).checkEmailVerification();
         }
       },
