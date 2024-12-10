@@ -1,3 +1,5 @@
+// lib/features/auth/services/auth_service.dart
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,6 +8,7 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/logging/logger_service.dart';
 import '../../../models/user_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   final FirebaseAuth _auth;
@@ -13,6 +16,7 @@ class AuthService {
   final FirebaseFirestore _firestore;
   final LoggerService _logger;
 
+  static const String _guestPrefsKey = 'guest_session';
   static const int _maxRetries = 3;
   static const Duration _retryDelay = Duration(seconds: 2);
 
@@ -30,6 +34,14 @@ class AuthService {
 
   Future<UserModel?> getCurrentUser() async {
     try {
+      // Check for guest session first
+      final prefs = await SharedPreferences.getInstance();
+      final guestData = prefs.getString(_guestPrefsKey);
+      if (guestData != null) {
+        return UserModel.fromJson(guestData);
+      }
+
+      // Check for authenticated user
       final User? user = _auth.currentUser;
       if (user == null) return null;
 
@@ -48,7 +60,10 @@ class AuthService {
     try {
       await _verifyConnectivityAndAppCheck();
 
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      final GoogleSignInAccount? googleUser = await _retryOperation(
+        () => _googleSignIn.signIn(),
+      );
+
       if (googleUser == null) {
         _logger.warning('Google sign in cancelled by user');
         return null;
@@ -56,6 +71,7 @@ class AuthService {
 
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
+
       if (googleAuth.accessToken == null || googleAuth.idToken == null) {
         throw CustomAuthException(
           code: 'google-signin-failed',
@@ -78,6 +94,9 @@ class AuthService {
           message: 'Failed to sign in with Google: No user returned',
         );
       }
+
+      // Clear any existing guest session
+      await _clearGuestSession();
 
       return await _createOrUpdateUser(userCredential.user!);
     } on FirebaseAuthException catch (e, stackTrace) {
@@ -115,6 +134,9 @@ class AuthService {
         );
       }
 
+      // Clear any existing guest session
+      await _clearGuestSession();
+
       return await _createOrUpdateUser(userCredential.user!);
     } on FirebaseAuthException catch (e, stackTrace) {
       _logger.error('Firebase Auth Error signing in with email: ${e.message}',
@@ -134,36 +156,48 @@ class AuthService {
 
   Future<UserModel?> signInAsGuest() async {
     try {
-      await _verifyConnectivityAndAppCheck();
+      _logger.info('Creating guest session');
 
-      final UserCredential userCredential = await _retryOperation(
-        () => _auth.signInAnonymously(),
-      );
-
-      if (userCredential.user == null) {
-        throw CustomAuthException(
-          code: 'guest-signin-failed',
-          message: 'Failed to sign in as guest: No user returned',
-        );
-      }
-
-      return await _createOrUpdateUser(
-        userCredential.user!,
+      // Create a guest user with a unique ID
+      final guestUser = UserModel(
+        id: 'guest_${DateTime.now().millisecondsSinceEpoch}',
+        displayName: 'Guest User',
         isGuest: true,
+        createdAt: DateTime.now(),
+        lastLoginAt: DateTime.now(),
       );
-    } on FirebaseAuthException catch (e, stackTrace) {
-      _logger.error('Firebase Auth Error signing in as guest: ${e.message}', e,
-          stackTrace);
-      throw CustomAuthException(
-        code: e.code,
-        message: _getReadableAuthError(e.code),
-      );
+
+      // Store guest user data
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_guestPrefsKey, guestUser.toJson());
+
+      _logger.info('Guest session created successfully');
+      return guestUser;
     } catch (e, stackTrace) {
-      _logger.error('Error signing in as guest', e, stackTrace);
+      _logger.error('Error creating guest session', e, stackTrace);
       throw CustomAuthException(
-        code: 'unknown',
-        message: 'Failed to sign in as guest: ${e.toString()}',
+        code: 'guest-session-failed',
+        message: 'Failed to create guest session: ${e.toString()}',
       );
+    }
+  }
+
+  Future<bool> isGuestSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.containsKey(_guestPrefsKey);
+    } catch (e, stackTrace) {
+      _logger.error('Error checking guest session', e, stackTrace);
+      return false;
+    }
+  }
+
+  Future<void> _clearGuestSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_guestPrefsKey);
+    } catch (e, stackTrace) {
+      _logger.error('Error clearing guest session', e, stackTrace);
     }
   }
 
@@ -192,6 +226,9 @@ class AuthService {
       await userCredential.user?.updateDisplayName(displayName.trim());
       await userCredential.user?.sendEmailVerification();
 
+      // Clear any existing guest session
+      await _clearGuestSession();
+
       return await _createOrUpdateUser(userCredential.user!);
     } on FirebaseAuthException catch (e, stackTrace) {
       _logger.error(
@@ -211,25 +248,34 @@ class AuthService {
 
   Future<void> signOut() async {
     try {
+      // Check if we're in a guest session
+      if (await isGuestSession()) {
+        await _clearGuestSession();
+        _logger.info('Guest session cleared');
+        return;
+      }
+
+      // Regular sign out process
       await Future.wait([
         _auth.signOut(),
         _googleSignIn.signOut(),
       ]);
+      _logger.info('User signed out successfully');
     } catch (e, stackTrace) {
       _logger.error('Error signing out', e, stackTrace);
       rethrow;
     }
   }
 
-  Future<UserModel> _createOrUpdateUser(User user,
-      {bool isGuest = false}) async {
+  Future<UserModel> _createOrUpdateUser(User user) async {
     final userDoc = _firestore.collection('users').doc(user.uid);
 
     final UserModel userData = UserModel(
       id: user.uid,
       email: user.email,
-      displayName: user.displayName,
-      isGuest: isGuest,
+      displayName: user.displayName ?? 'User ${user.uid.substring(0, 4)}',
+      isGuest: false,
+      isEmailVerified: user.emailVerified,
       lastLoginAt: DateTime.now(),
     );
 
@@ -237,12 +283,15 @@ class AuthService {
       final doc = await userDoc.get();
       if (!doc.exists) {
         await userDoc.set(userData.toMap());
+        _logger.info('Created new user document for ${user.uid}');
       } else {
         await userDoc.update({
           'lastLoginAt': Timestamp.fromDate(DateTime.now()),
           'email': user.email,
           'displayName': user.displayName,
+          'isEmailVerified': user.emailVerified,
         });
+        _logger.info('Updated user document for ${user.uid}');
       }
 
       return userData;
@@ -320,6 +369,8 @@ class AuthService {
         attempts++;
         if (attempts >= _maxRetries) rethrow;
         await Future.delayed(_retryDelay);
+        _logger.warning(
+            'Retry attempt $attempts for operation after error: ${e.toString()}');
       }
     }
     throw CustomAuthException(

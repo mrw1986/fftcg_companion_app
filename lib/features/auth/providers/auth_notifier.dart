@@ -1,8 +1,10 @@
+// lib/features/auth/providers/auth_notifier.dart
+
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/logging/logger_service.dart';
-import '../enums/auth_status.dart';
 import '../repositories/auth_repository.dart';
+import '../enums/auth_status.dart';
 import 'auth_state.dart';
 
 class AuthNotifier extends StateNotifier<AuthState> {
@@ -20,25 +22,58 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   void _initialize() {
+    _logger.info('Initializing AuthNotifier');
     _authStateSubscription?.cancel();
     _authStateSubscription = _authRepository.authStateChanges.listen(
-      (user) {
-        if (user != null) {
+      (user) async {
+        try {
+          if (user != null) {
+            // Check if it's a guest user
+            if (user.isGuest) {
+              _logger.info('Guest user session detected');
+              state = state.copyWith(
+                status: AuthStatus.guest,
+                user: user,
+                errorMessage: null,
+              );
+            } else {
+              _logger.info('Authenticated user session detected');
+              state = state.copyWith(
+                status: AuthStatus.authenticated,
+                user: user,
+                errorMessage: null,
+              );
+            }
+          } else {
+            // Check if we have a guest session
+            final isGuest = await _authRepository.isGuestSession();
+            if (isGuest) {
+              _logger.info('Restoring guest session');
+              final guestUser = await _authRepository.getCurrentUser();
+              state = state.copyWith(
+                status: AuthStatus.guest,
+                user: guestUser,
+                errorMessage: null,
+              );
+            } else {
+              _logger.info('No active session detected');
+              state = state.copyWith(
+                status: AuthStatus.unauthenticated,
+                user: null,
+                errorMessage: null,
+              );
+            }
+          }
+        } catch (e, stackTrace) {
+          _logger.error('Error in auth state change handler', e, stackTrace);
           state = state.copyWith(
-            status: user.isGuest ? AuthStatus.guest : AuthStatus.authenticated,
-            user: user,
-            errorMessage: null,
-          );
-        } else {
-          state = state.copyWith(
-            status: AuthStatus.unauthenticated,
-            user: null,
-            errorMessage: null,
+            status: AuthStatus.error,
+            errorMessage: 'Failed to process authentication state',
           );
         }
       },
-      onError: (error) {
-        _logger.error('Auth state stream error', error);
+      onError: (error, stackTrace) {
+        _logger.error('Auth state stream error', error, stackTrace);
         state = state.copyWith(
           status: AuthStatus.error,
           errorMessage: 'Authentication error occurred',
@@ -50,7 +85,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signInWithGoogle() async {
     try {
       state = state.copyWith(status: AuthStatus.loading);
+      _logger.info('Attempting Google sign in');
+
       await _authRepository.signInWithGoogle();
+
+      // State will be updated by the auth state listener
+      _logger.info('Google sign in completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error signing in with Google', e, stackTrace);
       state = state.copyWith(
@@ -63,7 +103,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signInWithEmailPassword(String email, String password) async {
     try {
       state = state.copyWith(status: AuthStatus.loading);
+      _logger.info('Attempting email/password sign in');
+
       await _authRepository.signInWithEmailPassword(email, password);
+
+      // State will be updated by the auth state listener
+      _logger.info('Email/password sign in completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error signing in with email/password', e, stackTrace);
       state = state.copyWith(
@@ -80,11 +125,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
   ) async {
     try {
       state = state.copyWith(status: AuthStatus.loading);
+      _logger.info('Attempting user registration');
+
       await _authRepository.registerWithEmailPassword(
         email,
         password,
         displayName,
       );
+
+      // State will be updated by the auth state listener
+      _logger.info('User registration completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error registering with email/password', e, stackTrace);
       state = state.copyWith(
@@ -97,12 +147,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signInAsGuest() async {
     try {
       state = state.copyWith(status: AuthStatus.loading);
-      await _authRepository.signInAsGuest();
+      _logger.info('Attempting guest sign in');
+
+      final guestUser = await _authRepository.signInAsGuest();
+
+      if (guestUser != null) {
+        state = state.copyWith(
+          status: AuthStatus.guest,
+          user: guestUser,
+          errorMessage: null,
+        );
+        _logger.info('Guest sign in completed successfully');
+      } else {
+        throw Exception('Failed to create guest session');
+      }
     } catch (e, stackTrace) {
       _logger.error('Error signing in as guest', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to sign in as guest',
+        errorMessage: 'Failed to continue as guest',
       );
     }
   }
@@ -110,7 +173,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signOut() async {
     try {
       state = state.copyWith(status: AuthStatus.loading);
+      _logger.info('Attempting sign out');
+
       await _authRepository.signOut();
+
+      // State will be updated by the auth state listener
+      _logger.info('Sign out completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error signing out', e, stackTrace);
       state = state.copyWith(
@@ -120,15 +188,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  @override
-  void dispose() {
-    _authStateSubscription?.cancel();
-    super.dispose();
-  }
-
-Future<void> sendEmailVerification() async {
+  Future<void> sendEmailVerification() async {
     try {
+      _logger.info('Sending email verification');
       await _authRepository.sendEmailVerification();
+      _logger.info('Email verification sent successfully');
     } catch (e, stackTrace) {
       _logger.error('Error sending email verification', e, stackTrace);
       state = state.copyWith(
@@ -140,6 +204,7 @@ Future<void> sendEmailVerification() async {
 
   Future<void> checkEmailVerification() async {
     try {
+      _logger.info('Checking email verification status');
       await _authRepository.checkEmailVerification();
     } catch (e, stackTrace) {
       _logger.error('Error checking email verification', e, stackTrace);
@@ -150,4 +215,16 @@ Future<void> sendEmailVerification() async {
     }
   }
 
+  Future<void> retryInitialization() async {
+    _logger.info('Retrying auth initialization');
+    state = AuthState();
+    _initialize();
+  }
+
+  @override
+  void dispose() {
+    _logger.info('Disposing AuthNotifier');
+    _authStateSubscription?.cancel();
+    super.dispose();
+  }
 }

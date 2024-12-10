@@ -6,6 +6,10 @@ class AuthRepository {
   final AuthService _authService;
   final LoggerService _logger;
 
+  Future<bool> isGuestSession() async {
+    return _authService.isGuestSession();
+  }
+
   AuthRepository({
     AuthService? authService,
     LoggerService? logger,

@@ -1,22 +1,37 @@
+// lib/features/cards/repositories/card_repository.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/logging/logger_service.dart';
 import '../../../core/services/hive_service.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../models/fftcg_card.dart';
 import '../../../core/models/sync_status.dart';
+import '../../auth/services/auth_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CardRepository {
   final FirebaseFirestore _firestore;
   final HiveService _hiveService;
   final LoggerService _logger;
+  final AuthService _authService;
+  final ConnectivityService _connectivityService;
+
   static const String _collectionName = 'cards';
+  static const int _batchSize = 500;
+  static const Duration _cacheExpiration = Duration(hours: 24);
+  static const String _lastCacheTimeKey = 'last_cache_time';
 
   CardRepository({
     FirebaseFirestore? firestore,
     HiveService? hiveService,
     LoggerService? logger,
+    AuthService? authService,
+    ConnectivityService? connectivityService,
   })  : _firestore = firestore ?? FirebaseFirestore.instance,
         _hiveService = hiveService ?? HiveService(),
-        _logger = logger ?? LoggerService();
+        _logger = logger ?? LoggerService(),
+        _authService = authService ?? AuthService(),
+        _connectivityService = connectivityService ?? ConnectivityService();
 
   Stream<List<FFTCGCard>> watchCards({
     String? searchQuery,
@@ -25,15 +40,32 @@ class CardRepository {
     String? cost,
   }) async* {
     try {
-      // First, yield local data
-      yield _getLocalCards(
+      // Get local cards outside the main try block so it's available in catch
+      List<FFTCGCard> localResults = _getLocalCards(
         searchQuery: searchQuery,
         elements: elements,
         cardType: cardType,
         cost: cost,
       );
 
-      // Then, start watching Firestore if online
+      // First, yield local data
+      yield localResults;
+
+      // Check if we're in guest mode
+      final isGuest = await _authService.isGuestSession();
+      if (isGuest) {
+        _logger.info('In guest mode - using local data only');
+        return;
+      }
+
+      // Check connectivity
+      final isConnected = await _connectivityService.hasStableConnection();
+      if (!isConnected) {
+        _logger.info('No stable connection - using local data only');
+        return;
+      }
+
+      // Build the query
       Query query = _firestore.collection(_collectionName);
 
       if (searchQuery != null && searchQuery.isNotEmpty) {
@@ -50,38 +82,43 @@ class CardRepository {
         });
       }
 
+      // Listen to Firestore updates
       await for (final snapshot in query.snapshots()) {
-        final cards = snapshot.docs.map((doc) {
-          final card = FFTCGCard.fromFirestore(doc);
-          // Preserve sync status of existing local cards
-          final existingCard = _hiveService.getCard(card.cardNumber ?? '');
-          if (existingCard != null) {
-            return card.copyWith(
-              syncStatus: existingCard.syncStatus,
-              lastModifiedLocally: existingCard.lastModifiedLocally,
-            );
-          }
-          return card;
-        }).toList();
+        try {
+          final cards = snapshot.docs.map((doc) {
+            final card = FFTCGCard.fromFirestore(doc);
+            // Preserve sync status of existing local cards
+            final existingCard = _hiveService.getCard(card.cardNumber ?? '');
+            if (existingCard != null) {
+              return card.copyWith(
+                syncStatus: existingCard.syncStatus,
+                lastModifiedLocally: existingCard.lastModifiedLocally,
+              );
+            }
+            return card;
+          }).toList();
 
-        // Filter by elements if specified
-        final filteredCards = elements?.isNotEmpty == true
-            ? cards.where(
-                (card) => elements!.any(
-                  (element) => card.elements.contains(element),
-                ),
-              )
-            : cards;
+          // Apply element filters if specified
+          final filteredCards = elements?.isNotEmpty == true
+              ? cards.where((card) =>
+                  elements!.any((element) => card.elements.contains(element)))
+              : cards;
 
-        // Save to local storage
-        await _saveCardsLocally(filteredCards.toList());
+          final resultsList = filteredCards.toList();
 
-        yield filteredCards.toList();
+          // Save to local storage
+          await _saveCardsLocally(resultsList);
+
+          yield resultsList;
+        } catch (e, stackTrace) {
+          _logger.error('Error processing card snapshot', e, stackTrace);
+          // Return existing local data on error
+          yield localResults;
+        }
       }
     } catch (e, stackTrace) {
       _logger.error('Error watching cards', e, stackTrace);
-
-      // On error, return local data
+      // Use _getLocalCards directly in catch block
       yield _getLocalCards(
         searchQuery: searchQuery,
         elements: elements,
@@ -99,15 +136,23 @@ class CardRepository {
         return localCard;
       }
 
-      // If not found locally, check Firestore
-      final querySnapshot = await _firestore
+      // Check if we're in guest mode or offline
+      final isGuest = await _authService.isGuestSession();
+      final isConnected = await _connectivityService.hasStableConnection();
+      if (isGuest || !isConnected) {
+        _logger.info('Using local data only for card lookup');
+        return null;
+      }
+
+      // Query Firestore
+      final querySnapshot = await _retryOperation(() => _firestore
           .collection(_collectionName)
           .where('extendedData', arrayContains: {
             'name': 'Number',
             'value': cardNumber,
           })
           .limit(1)
-          .get();
+          .get());
 
       if (querySnapshot.docs.isEmpty) {
         _logger.warning('Card not found: $cardNumber');
@@ -131,19 +176,27 @@ class CardRepository {
         return localCards;
       }
 
-      // If no local results, search Firestore
-      final querySnapshot = await _firestore
+      // Check if we should query Firestore
+      final isGuest = await _authService.isGuestSession();
+      final isConnected = await _connectivityService.hasStableConnection();
+      if (isGuest || !isConnected) {
+        _logger.info('Using local data only for search');
+        return localCards;
+      }
+
+      // Query Firestore with retry logic
+      final querySnapshot = await _retryOperation(() => _firestore
           .collection(_collectionName)
           .where('cleanName', isGreaterThanOrEqualTo: query.toLowerCase())
           .where('cleanName', isLessThan: '${query.toLowerCase()}z')
           .limit(20)
-          .get();
+          .get());
 
       final cards = querySnapshot.docs
           .map((doc) => FFTCGCard.fromFirestore(doc))
           .toList();
 
-      // Save search results locally
+      // Cache search results
       await _saveCardsLocally(cards);
 
       return cards;
@@ -159,16 +212,31 @@ class CardRepository {
       // First check local storage
       final localCards = _hiveService.getAllCards();
       if (localCards.isNotEmpty) {
-        return localCards.expand((card) => card.elements).toSet().toList();
+        return localCards
+            .expand((card) => card.elements)
+            .toSet()
+            .toList()
+          ..sort();
       }
 
-      // If no local data, fetch from Firestore
-      final querySnapshot = await _firestore.collection(_collectionName).get();
+      // Check if we should query Firestore
+      final isGuest = await _authService.isGuestSession();
+      final isConnected = await _connectivityService.hasStableConnection();
+      if (isGuest || !isConnected) {
+        _logger.info('Using local data only for element lookup');
+        return [];
+      }
+
+      final querySnapshot = await _retryOperation(
+        () => _firestore.collection(_collectionName).get(),
+      );
+
       final elements = querySnapshot.docs
           .map((doc) => FFTCGCard.fromFirestore(doc))
           .expand((card) => card.elements)
           .toSet()
-          .toList();
+          .toList()
+        ..sort();
 
       _logger.info('Found ${elements.length} unique elements');
       return elements;
@@ -188,18 +256,30 @@ class CardRepository {
             .where((type) => type != null)
             .toSet()
             .cast<String>()
-            .toList();
+            .toList()
+          ..sort();
       }
 
-      // If no local data, fetch from Firestore
-      final querySnapshot = await _firestore.collection(_collectionName).get();
+      // Check if we should query Firestore
+      final isGuest = await _authService.isGuestSession();
+      final isConnected = await _connectivityService.hasStableConnection();
+      if (isGuest || !isConnected) {
+        _logger.info('Using local data only for card type lookup');
+        return [];
+      }
+
+      final querySnapshot = await _retryOperation(
+        () => _firestore.collection(_collectionName).get(),
+      );
+
       final cardTypes = querySnapshot.docs
           .map((doc) => FFTCGCard.fromFirestore(doc))
           .map((card) => card.cardType)
           .where((type) => type != null)
           .toSet()
           .cast<String>()
-          .toList();
+          .toList()
+        ..sort();
 
       _logger.info('Found ${cardTypes.length} unique card types');
       return cardTypes;
@@ -217,16 +297,51 @@ class CardRepository {
         return localCards;
       }
 
-      // If no local data, fetch from Firestore
-      final querySnapshot = await _firestore.collection(_collectionName).get();
-      final cards = querySnapshot.docs
-          .map((doc) => FFTCGCard.fromFirestore(doc))
-          .toList();
+      // Check if we should query Firestore
+      final isGuest = await _authService.isGuestSession();
+      final isConnected = await _connectivityService.hasStableConnection();
+      if (isGuest || !isConnected) {
+        _logger.info('Using local data only for full card list');
+        return localCards;
+      }
 
-      // Save to local storage
-      await _saveCardsLocally(cards);
+      // Fetch in batches to handle large datasets
+      final List<FFTCGCard> allCards = [];
+      DocumentSnapshot? lastDocument;
+      bool hasMoreData = true;
 
-      return cards;
+      while (hasMoreData) {
+        Query query = _firestore
+            .collection(_collectionName)
+            .orderBy(FieldPath.documentId)
+            .limit(_batchSize);
+
+        if (lastDocument != null) {
+          query = query.startAfterDocument(lastDocument);
+        }
+
+        final querySnapshot = await _retryOperation(() => query.get());
+        
+        if (querySnapshot.docs.isEmpty) {
+          hasMoreData = false;
+          continue;
+        }
+
+        final batchCards = querySnapshot.docs
+            .map((doc) => FFTCGCard.fromFirestore(doc))
+            .toList();
+
+        allCards.addAll(batchCards);
+        lastDocument = querySnapshot.docs.last;
+
+        // Save batch to local storage
+        await _saveCardsLocally(batchCards);
+        
+        _logger.info('Fetched batch of ${batchCards.length} cards');
+      }
+
+      _logger.info('Retrieved total of ${allCards.length} cards');
+      return allCards;
     } catch (e, stackTrace) {
       _logger.error('Error getting all cards', e, stackTrace);
       rethrow;
@@ -246,7 +361,9 @@ class CardRepository {
       if (searchQuery?.isNotEmpty == true) {
         cards = cards
             .where((card) =>
-                card.name.toLowerCase().contains(searchQuery!.toLowerCase()))
+                card.name.toLowerCase().contains(searchQuery!.toLowerCase()) ||
+                (card.cardNumber?.toLowerCase().contains(searchQuery.toLowerCase()) ??
+                    false))
             .toList();
       }
 
@@ -278,6 +395,7 @@ class CardRepository {
       _logger.info('Saved ${cards.length} cards locally');
     } catch (e, stackTrace) {
       _logger.error('Error saving cards locally', e, stackTrace);
+      rethrow;
     }
   }
 
@@ -319,6 +437,19 @@ class CardRepository {
     try {
       _logger.info('Starting user data sync for ID: $userId');
 
+      // Check if we're in guest mode
+      final isGuest = await _authService.isGuestSession();
+      if (isGuest) {
+        _logger.info('Skipping sync for guest user');
+        return;
+      }
+
+      // Check connectivity
+      final isConnected = await _connectivityService.hasStableConnection();
+      if (!isConnected) {
+        throw Exception('No stable connection available for sync');
+      }
+
       // Get all locally modified cards
       final localCards = _hiveService
           .getAllCards()
@@ -330,20 +461,42 @@ class CardRepository {
         return;
       }
 
-      // Upload to Firestore
-      final batch = _firestore.batch();
-      for (final card in localCards) {
-        final docRef =
-            _firestore.collection(_collectionName).doc(card.cardNumber);
-        batch.set(docRef, card.toMap(), SetOptions(merge: true));
-      }
+      // Process in batches
+      for (var i = 0; i < localCards.length; i += _batchSize) {
+        final end = (i + _batchSize < localCards.length)
+            ? i + _batchSize
+            : localCards.length;
+        final batch = _firestore.batch();
+        final currentBatch = localCards.sublist(i, end);
 
-      await batch.commit();
+        for (final card in currentBatch) {
+          final docRef = _firestore
+              .collection('users')
+              .doc(userId)
+              .collection('cards')
+              .doc(card.cardNumber);
 
-      // Mark all synced cards
-      for (final card in localCards) {
-        card.markSynced();
-        await _hiveService.saveCard(card);
+          batch.set(
+            docRef,
+            {
+              ...card.toMap(),
+              'lastModified': FieldValue.serverTimestamp(),
+              'syncStatus': 'synced',
+            },
+            SetOptions(merge: true),
+          );
+        }
+
+        await _retryOperation(() => batch.commit());
+
+        // Update local sync status
+        for (final card in currentBatch) {
+          card.markSynced();
+          await _hiveService.saveCard(card);
+        }
+
+        _logger.info(
+            'Synced batch of ${currentBatch.length} cards ($end/${localCards.length})');
       }
 
       _logger.info('Successfully synced ${localCards.length} cards');
@@ -362,4 +515,85 @@ class CardRepository {
       rethrow;
     }
   }
+
+  Future<T> _retryOperation<T>(Future<T> Function() operation) async {
+    int attempts = 0;
+    const maxAttempts = 3;
+    const retryDelay = Duration(seconds: 2);
+
+    while (attempts < maxAttempts) {
+      try {
+        return await operation();
+      } catch (e) {
+        attempts++;
+        if (attempts >= maxAttempts) rethrow;
+
+        // Fixed string interpolation
+        _logger.warning(
+            'Operation failed, attempt $attempts of $maxAttempts. Retrying in $retryDelay.inSeconds s');
+        await Future.delayed(retryDelay);
+      }
+    }
+
+    throw CardRepositoryException(
+      'Operation failed after $maxAttempts attempts',
+      code: 'retry-exhausted',
+    );
+  }
+
+  Future<bool> isCacheValid() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastCacheTime = prefs.getInt(_lastCacheTimeKey);
+
+      if (lastCacheTime == null) return false;
+
+      final lastCacheDateTime =
+          DateTime.fromMillisecondsSinceEpoch(lastCacheTime);
+      return DateTime.now().difference(lastCacheDateTime) < _cacheExpiration;
+    } catch (e, stackTrace) {
+      _logger.error('Error checking cache validity', e, stackTrace);
+      return false;
+    }
+  }
+
+  Future<void> updateCacheTimestamp() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+      final success = await prefs.setInt(_lastCacheTimeKey, timestamp);
+      if (!success) {
+        throw CardRepositoryException(
+          'Failed to update cache timestamp',
+          code: 'cache-update-failed',
+        );
+      }
+
+      _logger.info('Cache timestamp updated successfully');
+    } catch (e, stackTrace) {
+      _logger.error('Error updating cache timestamp', e, stackTrace);
+      throw CardRepositoryException(
+        'Failed to update cache timestamp',
+        code: 'cache-update-failed',
+        originalError: e,
+      );
+    }
+  }
+}
+
+class CardRepositoryException implements Exception {
+  final String message;
+  final String? code;
+  final dynamic originalError;
+
+  CardRepositoryException(
+    this.message, {
+    this.code,
+    this.originalError,
+  });
+
+  @override
+  String toString() =>
+      'CardRepositoryException: $message${code != null ? ' (Code: $code)' : ''}';
 }

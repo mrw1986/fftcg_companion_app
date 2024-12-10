@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 
 class UserModel {
   final String id;
@@ -42,6 +43,27 @@ class UserModel {
       'createdAt': Timestamp.fromDate(createdAt),
       'lastLoginAt': Timestamp.fromDate(lastLoginAt),
     };
+  }
+
+  String toJson() {
+    return json.encode(toMap());
+  }
+
+  factory UserModel.fromJson(String jsonString) {
+    final Map<String, dynamic> data = json.decode(jsonString);
+    return UserModel(
+      id: data['id'] as String,
+      email: data['email'] as String?,
+      displayName: data['displayName'] as String?,
+      isGuest: data['isGuest'] as bool,
+      isEmailVerified: data['isEmailVerified'] as bool? ?? false,
+      createdAt: data['createdAt'] != null
+          ? DateTime.parse(data['createdAt'] as String)
+          : DateTime.now(),
+      lastLoginAt: data['lastLoginAt'] != null
+          ? DateTime.parse(data['lastLoginAt'] as String)
+          : DateTime.now(),
+    );
   }
 
   UserModel copyWith({
