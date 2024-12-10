@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import 'core/logging/logger_service.dart';
 import 'core/theme/app_theme.dart';
@@ -52,33 +53,48 @@ void main() async {
 
 Future<void> _initializeFirebase(LoggerService logger) async {
   try {
+    // Check connectivity first
+    final connectivity = Connectivity();
+    final connectivityResult = await connectivity.checkConnectivity();
+    if (connectivityResult.contains(ConnectivityResult.none)) {
+      logger.warning('No network connectivity available');
+    }
+
     // Initialize Firebase
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
     // Initialize App Check with retry mechanism
-    int retries = 3;
-    while (retries > 0) {
-      try {
-        await FirebaseAppCheck.instance.activate(
-          androidProvider: kDebugMode
-              ? AndroidProvider.debug
-              : AndroidProvider.playIntegrity,
-          appleProvider: AppleProvider.appAttest,
-        );
-        break;
-      } catch (e, stackTrace) {
-        retries--;
-        logger.error(
-          'App Check initialization attempt failed. Retries left: $retries',
-          e,
-          stackTrace,
-        );
-        if (retries > 0) {
-          await Future.delayed(const Duration(seconds: 2));
-        } else {
-          rethrow;
+    if (!kIsWeb) {
+      int retries = 3;
+      while (retries > 0) {
+        try {
+          await FirebaseAppCheck.instance.activate(
+            androidProvider: kDebugMode
+                ? AndroidProvider.debug
+                : AndroidProvider.playIntegrity,
+            appleProvider: AppleProvider.appAttest,
+          );
+          break;
+        } catch (e, stackTrace) {
+          retries--;
+          logger.error(
+            'App Check initialization attempt failed. Retries left: $retries',
+            e,
+            stackTrace,
+          );
+          if (retries > 0) {
+            await Future.delayed(const Duration(seconds: 2));
+          } else {
+            // In debug mode, continue without App Check
+            if (kDebugMode) {
+              logger.warning('Continuing without App Check in debug mode');
+              break;
+            } else {
+              rethrow;
+            }
+          }
         }
       }
     }

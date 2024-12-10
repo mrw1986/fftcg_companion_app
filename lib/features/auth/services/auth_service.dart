@@ -3,14 +3,28 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/logging/logger_service.dart';
 import '../../../models/user_model.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final LoggerService _logger = LoggerService();
+  final FirebaseAuth _auth;
+  final GoogleSignIn _googleSignIn;
+  final FirebaseFirestore _firestore;
+  final LoggerService _logger;
+
+  static const int _maxRetries = 3;
+  static const Duration _retryDelay = Duration(seconds: 2);
+
+  AuthService({
+    FirebaseAuth? auth,
+    GoogleSignIn? googleSignIn,
+    FirebaseFirestore? firestore,
+    LoggerService? logger,
+  })  : _auth = auth ?? FirebaseAuth.instance,
+        _googleSignIn = googleSignIn ?? GoogleSignIn(),
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _logger = logger ?? LoggerService();
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
@@ -32,6 +46,8 @@ class AuthService {
 
   Future<UserModel?> signInWithGoogle() async {
     try {
+      await _verifyConnectivityAndAppCheck();
+
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         _logger.warning('Google sign in cancelled by user');
@@ -41,7 +57,7 @@ class AuthService {
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
       if (googleAuth.accessToken == null || googleAuth.idToken == null) {
-        throw FirebaseAuthException(
+        throw CustomAuthException(
           code: 'google-signin-failed',
           message: 'Failed to get Google authentication tokens',
         );
@@ -52,10 +68,12 @@ class AuthService {
         idToken: googleAuth.idToken,
       );
 
-      final UserCredential userCredential =
-          await _auth.signInWithCredential(credential);
+      final UserCredential userCredential = await _retryOperation(
+        () => _auth.signInWithCredential(credential),
+      );
+
       if (userCredential.user == null) {
-        throw FirebaseAuthException(
+        throw CustomAuthException(
           code: 'google-signin-failed',
           message: 'Failed to sign in with Google: No user returned',
         );
@@ -65,11 +83,14 @@ class AuthService {
     } on FirebaseAuthException catch (e, stackTrace) {
       _logger.error('Firebase Auth Error signing in with Google: ${e.message}',
           e, stackTrace);
-      rethrow;
+      throw CustomAuthException(
+        code: e.code,
+        message: _getReadableAuthError(e.code),
+      );
     } catch (e, stackTrace) {
       _logger.error('Error signing in with Google', e, stackTrace);
-      throw FirebaseAuthException(
-        code: 'google-signin-failed',
+      throw CustomAuthException(
+        code: 'unknown',
         message: 'Failed to sign in with Google: ${e.toString()}',
       );
     }
@@ -78,14 +99,17 @@ class AuthService {
   Future<UserModel?> signInWithEmailPassword(
       String email, String password) async {
     try {
-      final UserCredential userCredential =
-          await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
+      await _verifyConnectivityAndAppCheck();
+
+      final UserCredential userCredential = await _retryOperation(
+        () => _auth.signInWithEmailAndPassword(
+          email: email.trim(),
+          password: password,
+        ),
       );
 
       if (userCredential.user == null) {
-        throw FirebaseAuthException(
+        throw CustomAuthException(
           code: 'email-signin-failed',
           message: 'Failed to sign in with email: No user returned',
         );
@@ -95,11 +119,14 @@ class AuthService {
     } on FirebaseAuthException catch (e, stackTrace) {
       _logger.error('Firebase Auth Error signing in with email: ${e.message}',
           e, stackTrace);
-      rethrow;
+      throw CustomAuthException(
+        code: e.code,
+        message: _getReadableAuthError(e.code),
+      );
     } catch (e, stackTrace) {
       _logger.error('Error signing in with email/password', e, stackTrace);
-      throw FirebaseAuthException(
-        code: 'email-signin-failed',
+      throw CustomAuthException(
+        code: 'unknown',
         message: 'Failed to sign in with email: ${e.toString()}',
       );
     }
@@ -107,29 +134,14 @@ class AuthService {
 
   Future<UserModel?> signInAsGuest() async {
     try {
-      // Check connectivity first
-      final List<ConnectivityResult> connectivityResults =
-          await Connectivity().checkConnectivity();
-      if (connectivityResults.contains(ConnectivityResult.none) ||
-          connectivityResults.isEmpty) {
-        throw FirebaseAuthException(
-          code: 'network-error',
-          message:
-              'No internet connection. Please check your connection and try again.',
-        );
-      }
+      await _verifyConnectivityAndAppCheck();
 
-      // Check App Check initialization
-      try {
-        await FirebaseAppCheck.instance.getToken(true);
-      } catch (e) {
-        _logger.error('App Check not properly initialized', e);
-        // Continue anyway as we're using debug token
-      }
+      final UserCredential userCredential = await _retryOperation(
+        () => _auth.signInAnonymously(),
+      );
 
-      final UserCredential userCredential = await _auth.signInAnonymously();
       if (userCredential.user == null) {
-        throw FirebaseAuthException(
+        throw CustomAuthException(
           code: 'guest-signin-failed',
           message: 'Failed to sign in as guest: No user returned',
         );
@@ -142,11 +154,14 @@ class AuthService {
     } on FirebaseAuthException catch (e, stackTrace) {
       _logger.error('Firebase Auth Error signing in as guest: ${e.message}', e,
           stackTrace);
-      rethrow;
+      throw CustomAuthException(
+        code: e.code,
+        message: _getReadableAuthError(e.code),
+      );
     } catch (e, stackTrace) {
       _logger.error('Error signing in as guest', e, stackTrace);
-      throw FirebaseAuthException(
-        code: 'guest-signin-failed',
+      throw CustomAuthException(
+        code: 'unknown',
         message: 'Failed to sign in as guest: ${e.toString()}',
       );
     }
@@ -158,14 +173,17 @@ class AuthService {
     String displayName,
   ) async {
     try {
-      final UserCredential userCredential =
-          await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
+      await _verifyConnectivityAndAppCheck();
+
+      final UserCredential userCredential = await _retryOperation(
+        () => _auth.createUserWithEmailAndPassword(
+          email: email.trim(),
+          password: password,
+        ),
       );
 
       if (userCredential.user == null) {
-        throw FirebaseAuthException(
+        throw CustomAuthException(
           code: 'registration-failed',
           message: 'Failed to create account: No user returned',
         );
@@ -178,11 +196,14 @@ class AuthService {
     } on FirebaseAuthException catch (e, stackTrace) {
       _logger.error(
           'Firebase Auth Error registering user: ${e.message}', e, stackTrace);
-      rethrow;
+      throw CustomAuthException(
+        code: e.code,
+        message: _getReadableAuthError(e.code),
+      );
     } catch (e, stackTrace) {
       _logger.error('Error registering with email/password', e, stackTrace);
-      throw FirebaseAuthException(
-        code: 'registration-failed',
+      throw CustomAuthException(
+        code: 'unknown',
         message: 'Failed to create account: ${e.toString()}',
       );
     }
@@ -209,7 +230,6 @@ class AuthService {
       email: user.email,
       displayName: user.displayName,
       isGuest: isGuest,
-      isEmailVerified: user.emailVerified,
       lastLoginAt: DateTime.now(),
     );
 
@@ -222,14 +242,13 @@ class AuthService {
           'lastLoginAt': Timestamp.fromDate(DateTime.now()),
           'email': user.email,
           'displayName': user.displayName,
-          'isEmailVerified': user.emailVerified,
         });
       }
 
       return userData;
     } catch (e, stackTrace) {
       _logger.error('Error creating/updating user', e, stackTrace);
-      throw FirebaseAuthException(
+      throw CustomAuthException(
         code: 'user-update-failed',
         message: 'Failed to update user data: ${e.toString()}',
       );
@@ -240,7 +259,7 @@ class AuthService {
     try {
       final user = _auth.currentUser;
       if (user != null && !user.emailVerified) {
-        await user.sendEmailVerification();
+        await _retryOperation(() => user.sendEmailVerification());
         _logger.info('Verification email sent to ${user.email}');
       }
     } catch (e, stackTrace) {
@@ -252,19 +271,102 @@ class AuthService {
   Future<void> checkEmailVerification() async {
     try {
       final user = _auth.currentUser;
-      if (user == null) {
-        _logger.info('No user to check email verification');
-        return;
-      }
-
-      // Only reload and check if the user has an email
-      if (user.email != null && !user.isAnonymous) {
-        await user.reload();
+      if (user != null) {
+        await _retryOperation(() => user.reload());
         _logger.info('Email verification status: ${user.emailVerified}');
       }
     } catch (e, stackTrace) {
       _logger.error('Error checking email verification', e, stackTrace);
-      // Don't rethrow - this is a background check that shouldn't affect the UI
+      rethrow;
     }
   }
+
+  Future<void> _verifyConnectivityAndAppCheck() async {
+    final List<ConnectivityResult> connectivityResult =
+        await Connectivity().checkConnectivity();
+
+    if (connectivityResult.contains(ConnectivityResult.none)) {
+      throw CustomAuthException(
+        code: 'no-connection',
+        message: 'No internet connection available',
+      );
+    }
+
+    if (!kDebugMode) {
+      try {
+        final token = await FirebaseAppCheck.instance.getToken(true);
+        if (token == null) {
+          throw CustomAuthException(
+            code: 'app-check-failed',
+            message: 'Failed to verify app authenticity',
+          );
+        }
+      } catch (e) {
+        _logger.error('App Check verification failed', e);
+        throw CustomAuthException(
+          code: 'app-check-failed',
+          message: 'Failed to verify app authenticity',
+        );
+      }
+    }
+  }
+
+  Future<T> _retryOperation<T>(Future<T> Function() operation) async {
+    int attempts = 0;
+    while (attempts < _maxRetries) {
+      try {
+        return await operation();
+      } catch (e) {
+        attempts++;
+        if (attempts >= _maxRetries) rethrow;
+        await Future.delayed(_retryDelay);
+      }
+    }
+    throw CustomAuthException(
+      code: 'retry-failed',
+      message: 'Operation failed after $_maxRetries attempts',
+    );
+  }
+
+  String _getReadableAuthError(String code) {
+    switch (code) {
+      case 'user-not-found':
+        return 'No account found with this email address';
+      case 'wrong-password':
+        return 'Incorrect password';
+      case 'invalid-email':
+        return 'Invalid email address';
+      case 'user-disabled':
+        return 'This account has been disabled';
+      case 'email-already-in-use':
+        return 'An account already exists with this email';
+      case 'operation-not-allowed':
+        return 'This operation is not allowed';
+      case 'weak-password':
+        return 'Please enter a stronger password';
+      case 'network-request-failed':
+        return 'Network error. Please check your connection';
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later';
+      case 'app-check-failed':
+        return 'App verification failed. Please ensure you\'re using an official version';
+      case 'no-connection':
+        return 'No internet connection available';
+      default:
+        return 'Authentication failed. Please try again';
+    }
+  }
+}
+
+class CustomAuthException implements Exception {
+  final String code;
+  final String message;
+
+  CustomAuthException({
+    required this.code,
+    required this.message,
+  });
+
+  @override
+  String toString() => 'AuthException: $message (Code: $code)';
 }

@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true">
+    <debug-overrides>
         <trust-anchors>
             <certificates src="system" />
             <certificates src="user" />
         </trust-anchors>
+    </debug-overrides>
+    
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
     </base-config>
-    <domain-config cleartextTrafficPermitted="true">
+    
+    <domain-config>
         <domain includeSubdomains="true">googleapis.com</domain>
         <domain includeSubdomains="true">firebaseio.com</domain>
         <domain includeSubdomains="true">firebaseappcheck.googleapis.com</domain>
@@ -16,5 +23,11 @@
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
+        <pin-set expiration="2025-12-31">
+            <!-- Google's PKI -->
+            <pin digest="SHA-256">YZPgTZ+woNCCCIW3LH2CxQeLzB/1m42QcCTBSdgayjs=</pin>
+            <!-- Backup pin -->
+            <pin digest="SHA-256">sx8gDxNyVB6VjzNvA0M9S1OKYk1cOiKjhGIQm8TZ4Cs=</pin>
+        </pin-set>
     </domain-config>
 </network-security-config>

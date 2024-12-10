@@ -24,4 +24,13 @@ plugins {
     id "com.google.firebase.crashlytics" version "2.9.9" apply false
 }
 
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "android"
 include ":app"
