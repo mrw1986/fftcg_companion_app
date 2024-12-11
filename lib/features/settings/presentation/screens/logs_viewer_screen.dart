@@ -15,14 +15,29 @@ class LogsViewerScreen extends ConsumerStatefulWidget {
 class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
   final LoggerService _logger = LoggerService();
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
   String _logs = '';
   bool _showErrorLogsOnly = false;
   bool _isLoading = true;
+  String _filterText = '';
+  String _selectedLogLevel = 'All';
 
   @override
   void initState() {
     super.initState();
     _loadLogs();
+    _searchController.addListener(() {
+      setState(() {
+        _filterText = _searchController.text;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadLogs() async {
@@ -36,9 +51,31 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
     }
   }
 
+  String _getFilteredLogs() {
+    if (_filterText.isEmpty &&
+        _selectedLogLevel == 'All' &&
+        !_showErrorLogsOnly) {
+      return _logs;
+    }
+
+    final List<String> lines = _logs.split('\n');
+    return lines.where((line) {
+      bool matchesFilter = _filterText.isEmpty ||
+          line.toLowerCase().contains(_filterText.toLowerCase());
+
+      bool matchesLevel = _selectedLogLevel == 'All' ||
+          line.contains(': ${_selectedLogLevel.toUpperCase()}: ');
+
+      bool matchesErrorOnly =
+          !_showErrorLogsOnly || line.contains(': SEVERE: ');
+
+      return matchesFilter && matchesLevel && matchesErrorOnly;
+    }).join('\n');
+  }
+
   Future<void> _shareLogs() async {
     try {
-      final logs = await _logger.getLogs(errorLogsOnly: _showErrorLogsOnly);
+      final logs = _getFilteredLogs();
       final tempDir = await getTemporaryDirectory();
       final file = File('${tempDir.path}/fftcg_companion_logs.txt');
       await file.writeAsString(logs);
@@ -81,22 +118,45 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
     }
   }
 
+  void _scrollToTop() {
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  void _scrollToBottom() {
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final filteredLogs = _getFilteredLogs();
+    final logEntries =
+        filteredLogs.split('\n').where((line) => line.isNotEmpty).length;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('App Logs'),
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
+            tooltip: 'Share Logs',
             onPressed: _shareLogs,
           ),
           IconButton(
             icon: const Icon(Icons.delete),
+            tooltip: 'Clear Logs',
             onPressed: _clearLogs,
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
+            tooltip: 'Reload Logs',
             onPressed: _loadLogs,
           ),
         ],
@@ -105,18 +165,54 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(8.0),
-            child: Row(
+            child: Column(
               children: [
-                const Text('Show Error Logs Only'),
-                const SizedBox(width: 8),
-                Switch(
-                  value: _showErrorLogsOnly,
-                  onChanged: _isLoading
-                      ? null
-                      : (value) {
-                          setState(() => _showErrorLogsOnly = value);
-                          _loadLogs();
+                TextField(
+                  controller: _searchController,
+                  decoration: const InputDecoration(
+                    hintText: 'Search logs...',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        value: _selectedLogLevel,
+                        items: ['All', 'Info', 'Warning', 'Severe']
+                            .map((level) => DropdownMenuItem(
+                                  value: level,
+                                  child: Text(level),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              _selectedLogLevel = value;
+                            });
+                          }
                         },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Row(
+                      children: [
+                        const Text('Errors Only'),
+                        Switch(
+                          value: _showErrorLogsOnly,
+                          onChanged: _isLoading
+                              ? null
+                              : (value) {
+                                  setState(() => _showErrorLogsOnly = value);
+                                  _loadLogs();
+                                },
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -128,7 +224,7 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
                     controller: _scrollController,
                     padding: const EdgeInsets.all(16),
                     child: SelectableText(
-                      _logs,
+                      filteredLogs,
                       style: const TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 12,
@@ -139,30 +235,31 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                FloatingActionButton(
-                  mini: true,
-                  onPressed: () {
-                    _scrollController.animateTo(
-                      0,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                    );
-                  },
-                  child: const Icon(Icons.arrow_upward),
+                Text(
+                  '$logEntries entries',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
-                const SizedBox(width: 8),
-                FloatingActionButton(
-                  mini: true,
-                  onPressed: () {
-                    _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                    );
-                  },
-                  child: const Icon(Icons.arrow_downward),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FloatingActionButton(
+                      heroTag: 'scroll_to_top_button',
+                      mini: true,
+                      tooltip: 'Scroll to Top',
+                      onPressed: _scrollToTop,
+                      child: const Icon(Icons.arrow_upward),
+                    ),
+                    const SizedBox(width: 8),
+                    FloatingActionButton(
+                      heroTag: 'scroll_to_bottom_button',
+                      mini: true,
+                      tooltip: 'Scroll to Bottom',
+                      onPressed: _scrollToBottom,
+                      child: const Icon(Icons.arrow_downward),
+                    ),
+                  ],
                 ),
               ],
             ),

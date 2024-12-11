@@ -10,7 +10,7 @@ import '../widgets/search_bar_widget.dart';
 import '../../../../core/logging/logger_service.dart';
 import '../../providers/card_state.dart';
 import '../../../auth/providers/auth_providers.dart';
-import '../../../settings/presentation/screens/offline_management_screen.dart';
+import '../../../settings/presentation/screens/settings_screen.dart';
 
 class CardsScreen extends ConsumerStatefulWidget {
   const CardsScreen({super.key});
@@ -52,30 +52,6 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
     );
   }
 
-  Future<void> _handleLogout() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await ref.read(authNotifierProvider.notifier).signOut();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final cardState = ref.watch(cardNotifierProvider);
@@ -100,37 +76,24 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
               switch (value) {
-                case 'offline':
+                case 'settings':
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const OfflineManagementScreen(),
+                      builder: (context) => const SettingsScreen(),
                     ),
                   );
-                  break;
-                case 'logout':
-                  _handleLogout();
                   break;
               }
             },
             itemBuilder: (context) => [
               const PopupMenuItem(
-                value: 'offline',
+                value: 'settings',
                 child: Row(
                   children: [
-                    Icon(Icons.offline_bolt),
+                    Icon(Icons.settings),
                     SizedBox(width: 8),
-                    Text('Offline Management'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout),
-                    SizedBox(width: 8),
-                    Text('Logout'),
+                    Text('Settings'),
                   ],
                 ),
               ),
