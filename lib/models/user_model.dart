@@ -29,8 +29,16 @@ class UserModel {
       displayName: data['displayName'],
       isGuest: data['isGuest'] ?? false,
       isEmailVerified: data['isEmailVerified'] ?? false,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      lastLoginAt: (data['lastLoginAt'] as Timestamp).toDate(),
+      createdAt: data['createdAt'] is Timestamp
+          ? (data['createdAt'] as Timestamp).toDate()
+          : data['createdAt'] is String
+              ? DateTime.parse(data['createdAt'])
+              : DateTime.now(),
+      lastLoginAt: data['lastLoginAt'] is Timestamp
+          ? (data['lastLoginAt'] as Timestamp).toDate()
+          : data['lastLoginAt'] is String
+              ? DateTime.parse(data['lastLoginAt'])
+              : DateTime.now(),
     );
   }
 
@@ -41,8 +49,8 @@ class UserModel {
       'displayName': displayName,
       'isGuest': isGuest,
       'isEmailVerified': isEmailVerified,
-      'createdAt': createdAt.toIso8601String(),
-      'lastLoginAt': lastLoginAt.toIso8601String(),
+      'createdAt': Timestamp.fromDate(createdAt),
+      'lastLoginAt': Timestamp.fromDate(lastLoginAt),
     };
   }
 

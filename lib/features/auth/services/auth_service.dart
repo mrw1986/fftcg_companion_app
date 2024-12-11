@@ -28,9 +28,8 @@ class AuthService {
   })  : _auth = auth ?? FirebaseAuth.instance,
         _googleSignIn = googleSignIn ??
             GoogleSignIn(
-              scopes: ['email', 'profile'],
+              scopes: ['email'], // Simplified to just email scope
               signInOption: SignInOption.standard,
-              hostedDomain: '', // Allow any domain
             ),
         _firestore = firestore ?? FirebaseFirestore.instance,
         _logger = logger ?? LoggerService();
@@ -69,14 +68,8 @@ class AuthService {
       // Sign out of any existing sessions first
       await _googleSignIn.signOut();
 
-      // Begin interactive sign in process with timeout
-      final GoogleSignInAccount? googleUser =
-          await _googleSignIn.signIn().timeout(_timeout, onTimeout: () {
-        throw CustomAuthException(
-          code: 'timeout',
-          message: 'Sign in process timed out. Please try again.',
-        );
-      });
+      // Begin interactive sign in process
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
       if (googleUser == null) {
         _logger.warning('Google sign in cancelled by user');
@@ -85,30 +78,18 @@ class AuthService {
 
       // Get authentication details
       final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication.timeout(_timeout, onTimeout: () {
-        throw CustomAuthException(
-          code: 'auth-timeout',
-          message: 'Authentication process timed out. Please try again.',
-        );
-      });
+          await googleUser.authentication;
 
       // Create Firebase credential
-      final OAuthCredential credential = GoogleAuthProvider.credential(
+      final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
       // Sign in to Firebase
-      final UserCredential userCredential = await _auth
-          .signInWithCredential(credential)
-          .timeout(_timeout, onTimeout: () {
-        throw CustomAuthException(
-          code: 'firebase-timeout',
-          message: 'Firebase authentication timed out. Please try again.',
-        );
-      });
-
+      final userCredential = await _auth.signInWithCredential(credential);
       final user = userCredential.user;
+
       if (user == null) {
         throw CustomAuthException(
           code: 'null-user',
@@ -128,12 +109,6 @@ class AuthService {
         throw CustomAuthException(
           code: e.code,
           message: _getReadableAuthError(e.code),
-        );
-      } else if (e is TimeoutException) {
-        throw CustomAuthException(
-          code: 'timeout',
-          message:
-              'Operation timed out. Please check your connection and try again.',
         );
       } else if (e is CustomAuthException) {
         rethrow;
