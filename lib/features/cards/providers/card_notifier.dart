@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/logging/logger_service.dart';
-import '../repositories/card_repository.dart';
+import '../repositories/card_repository_facade.dart';
 import '../services/card_cache_service.dart';
 import '../models/card_filter_options.dart';
 import '../models/fftcg_card.dart';
+import '../repositories/models/repository_models.dart'; // Add this import
 import 'card_state.dart';
 
 class CardNotifier extends StateNotifier<CardState> {
@@ -42,34 +43,44 @@ class CardNotifier extends StateNotifier<CardState> {
     try {
       _cardsSubscription = _repository
           .watchCards(
-            searchQuery: state.searchQuery,
-            elements: state.filterOptions?.elements,
-            cardType: state.filterOptions?.cardType,
-            cost: state.filterOptions?.costs?.join(','),
+            CardQueryOptions(
+              // Create CardQueryOptions object
+              searchQuery: state.searchQuery,
+              elements: state.filterOptions?.elements,
+              cardType: state.filterOptions?.cardType,
+              cost: state.filterOptions?.costs?.join(','),
+            ),
           )
+          .handleError((error, stackTrace) {
+            _logger.error('Error in cards stream', error, stackTrace);
+            // Return empty list instead of throwing
+            return <FFTCGCard>[];
+          })
           .map((cards) => _applyFiltersAndSort(cards))
           .listen(
-        (cards) {
-          state = state.copyWith(
-            status: CardLoadingStatus.loaded,
-            cards: cards,
-            errorMessage: null,
+            (cards) {
+              state = state.copyWith(
+                status: CardLoadingStatus.loaded,
+                cards: cards,
+                errorMessage: null,
+              );
+              _logger.info('Cards loaded and sorted: ${cards.length}');
+            },
+            onError: (error, stackTrace) {
+              _logger.error('Error loading cards', error, stackTrace);
+              state = state.copyWith(
+                status: CardLoadingStatus.error,
+                errorMessage: 'Failed to load cards. Please try again.',
+                cards: [], // Ensure we have an empty list rather than null
+              );
+            },
           );
-          _logger.info('Cards loaded and sorted: ${cards.length}');
-        },
-        onError: (error, stackTrace) {
-          state = state.copyWith(
-            status: CardLoadingStatus.error,
-            errorMessage: 'Failed to load cards',
-          );
-          _logger.error('Error loading cards', error, stackTrace);
-        },
-      );
     } catch (e, stackTrace) {
       _logger.error('Error setting up cards stream', e, stackTrace);
       state = state.copyWith(
         status: CardLoadingStatus.error,
         errorMessage: 'Failed to initialize card loading',
+        cards: [], // Ensure we have an empty list rather than null
       );
     }
   }

@@ -9,9 +9,12 @@ class HiveService {
   static const String cardsBoxName = 'cards';
   static const String userBoxName = 'user';
   static const String syncStatusBoxName = 'sync_status';
-  
+
   final LoggerService _logger;
   bool _isInitialized = false;
+
+  // Add this getter to expose the initialization status
+  bool get isInitialized => _isInitialized;
 
   HiveService({LoggerService? logger}) : _logger = logger ?? LoggerService();
 
@@ -23,32 +26,52 @@ class HiveService {
 
     try {
       await Hive.initFlutter();
-      
-      // Register adapters if not already registered
-      if (!Hive.isAdapterRegistered(0)) {
-        Hive.registerAdapter(SyncStatusAdapter());
-      }
-      if (!Hive.isAdapterRegistered(1)) {
-        Hive.registerAdapter(FFTCGCardAdapter());
-      }
-      if (!Hive.isAdapterRegistered(2)) {
-        Hive.registerAdapter(CardExtendedDataAdapter());
-      }
-      if (!Hive.isAdapterRegistered(3)) {
-        Hive.registerAdapter(CardImageMetadataAdapter());
+
+      // Register adapters in a try-catch block
+      try {
+        if (!Hive.isAdapterRegistered(0)) {
+          Hive.registerAdapter(SyncStatusAdapter());
+        }
+        if (!Hive.isAdapterRegistered(1)) {
+          Hive.registerAdapter(FFTCGCardAdapter());
+        }
+        if (!Hive.isAdapterRegistered(2)) {
+          Hive.registerAdapter(CardExtendedDataAdapter());
+        }
+        if (!Hive.isAdapterRegistered(3)) {
+          Hive.registerAdapter(CardImageMetadataAdapter());
+        }
+      } catch (e) {
+        _logger.warning('Error registering adapters: $e');
+        // Continue anyway as adapters might already be registered
       }
 
-      // Open boxes
-      await Future.wait([
-        Hive.openBox<FFTCGCard>(cardsBoxName),
-        Hive.openBox(userBoxName),
-        Hive.openBox(syncStatusBoxName),
-      ]);
+      // Open boxes with better error handling
+      try {
+        await Future.wait([
+          Hive.openBox<FFTCGCard>(cardsBoxName),
+          Hive.openBox(userBoxName),
+          Hive.openBox(syncStatusBoxName),
+        ]);
+      } catch (e) {
+        _logger.error('Error opening boxes: $e');
+        // Try to delete and recreate boxes
+        await Hive.deleteBoxFromDisk(cardsBoxName);
+        await Hive.deleteBoxFromDisk(userBoxName);
+        await Hive.deleteBoxFromDisk(syncStatusBoxName);
+
+        await Future.wait([
+          Hive.openBox<FFTCGCard>(cardsBoxName),
+          Hive.openBox(userBoxName),
+          Hive.openBox(syncStatusBoxName),
+        ]);
+      }
 
       _isInitialized = true;
       _logger.info('Hive initialized successfully');
     } catch (e, stackTrace) {
       _logger.error('Failed to initialize Hive', e, stackTrace);
+      _isInitialized = false;
       rethrow;
     }
   }
@@ -70,23 +93,35 @@ class HiveService {
 
   Box<FFTCGCard> getCardsBox() {
     if (!_isInitialized) {
-      throw StateError('HiveService not initialized');
+      throw StateError('HiveService not initialized. Call initialize() first.');
     }
-    return Hive.box<FFTCGCard>(cardsBoxName);
+    final box = Hive.box<FFTCGCard>(cardsBoxName);
+    if (!box.isOpen) {
+      throw StateError('Cards box is not open');
+    }
+    return box;
   }
 
   Box getUserBox() {
     if (!_isInitialized) {
-      throw StateError('HiveService not initialized');
+      throw StateError('HiveService not initialized. Call initialize() first.');
     }
-    return Hive.box(userBoxName);
+    final box = Hive.box(userBoxName);
+    if (!box.isOpen) {
+      throw StateError('User box is not open');
+    }
+    return box;
   }
 
   Box getSyncStatusBox() {
     if (!_isInitialized) {
-      throw StateError('HiveService not initialized');
+      throw StateError('HiveService not initialized. Call initialize() first.');
     }
-    return Hive.box(syncStatusBoxName);
+    final box = Hive.box(syncStatusBoxName);
+    if (!box.isOpen) {
+      throw StateError('Sync status box is not open');
+    }
+    return box;
   }
 
   Future<void> clearAll() async {
@@ -111,6 +146,7 @@ class HiveService {
         Hive.deleteBoxFromDisk(userBoxName),
         Hive.deleteBoxFromDisk(syncStatusBoxName),
       ]);
+      _isInitialized = false;
       _logger.info('All Hive boxes deleted successfully');
     } catch (e, stackTrace) {
       _logger.error('Error deleting Hive boxes', e, stackTrace);
@@ -171,5 +207,10 @@ class HiveService {
       _logger.error('Error deleting card', e, stackTrace);
       rethrow;
     }
+  }
+
+  Future<void> reinitialize() async {
+    _isInitialized = false;
+    await initialize();
   }
 }

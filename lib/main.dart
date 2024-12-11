@@ -5,19 +5,38 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import 'core/logging/logger_service.dart';
 import 'core/theme/app_theme.dart';
-import 'features/cards/providers/card_providers.dart';
+import 'core/services/hive_service.dart';
 import 'firebase_options.dart';
 import 'core/providers/app_providers.dart';
 import 'features/auth/presentation/auth_wrapper.dart';
+import 'features/cards/providers/card_providers.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final logger = LoggerService();
 
   try {
+    // Initialize Hive
+    await Hive.initFlutter();
+    final hiveService = HiveService();
+    await hiveService.initialize();
+    logger.info('Hive initialized successfully');
+
+    // Configure caching
+    PaintingBinding.instance.imageCache.maximumSize = 1000;
+    PaintingBinding.instance.imageCache.maximumSizeBytes =
+        100 * 1024 * 1024; // 100 MB
+
+    // Configure network image caching
+    CachedNetworkImage.logLevel = CacheManagerLogLevel.verbose;
+    await DefaultCacheManager().emptyCache();
+
     // Initialize SharedPreferences
     final sharedPrefs = await SharedPreferences.getInstance();
 
@@ -65,37 +84,25 @@ Future<void> _initializeFirebase(LoggerService logger) async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Initialize App Check with retry mechanism
+    // Initialize App Check with enhanced configuration
     if (!kIsWeb) {
-      int retries = 3;
-      while (retries > 0) {
-        try {
-          await FirebaseAppCheck.instance.activate(
-            androidProvider: kDebugMode
-                ? AndroidProvider.debug
-                : AndroidProvider.playIntegrity,
-            appleProvider: AppleProvider.appAttest,
-          );
-          break;
-        } catch (e, stackTrace) {
-          retries--;
-          logger.error(
-            'App Check initialization attempt failed. Retries left: $retries',
-            e,
-            stackTrace,
-          );
-          if (retries > 0) {
-            await Future.delayed(const Duration(seconds: 2));
-          } else {
-            // In debug mode, continue without App Check
-            if (kDebugMode) {
-              logger.warning('Continuing without App Check in debug mode');
-              break;
-            } else {
-              rethrow;
-            }
-          }
+      try {
+        await FirebaseAppCheck.instance.activate(
+          androidProvider: kDebugMode
+              ? AndroidProvider.debug
+              : AndroidProvider.playIntegrity,
+        );
+
+        // Verify app check token
+        final token = await FirebaseAppCheck.instance.getToken();
+        if (token == null) {
+          throw Exception('Failed to get App Check token');
         }
+
+        logger.info('App Check initialized successfully');
+      } catch (e, stackTrace) {
+        logger.error('App Check initialization failed', e, stackTrace);
+        if (!kDebugMode) rethrow;
       }
     }
 

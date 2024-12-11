@@ -1,81 +1,95 @@
-# PowerShell script to extract relevant files
-$projectPath = "C:\VSCode\fftcg_companion_app"  # Adjust this path to your project root
-$outputFile = "codebase_export.txt"
+# Function to check if directory should be excluded
+function ShouldExcludeDirectory($path) {
+    $excludeDirs = @(
+        '.dart_tool',
+        'build',
+        '.idea',
+        '.vscode',
+        'ios',
+        'linux',
+        'macos',
+        'windows',
+        'web',
+        '.gradle'
+    )
 
-# Directories to exclude
-$excludeDirs = @(
-    '.dart_tool',
-    'build',
-    '.idea',
-    '.vscode',
-    'ios',
-    'linux',
-    'macos',
-    'windows',
-    'web'
-)
+    foreach ($dir in $excludeDirs) {
+        if ($path -like "*\$dir\*") {
+            return $true
+        }
+    }
+    return $false
+}
 
-# File patterns to include
-$includePatterns = @(
-    "*.dart",
-    "build.gradle",
-    "settings.gradle",
-    "gradle.properties",
-    "gradle-wrapper.properties",
-    "AndroidManifest.xml",
-    "proguard-rules.pro",
-    "*.properties",
-    "google-services.json",
-    "*.yaml"
-)
+# Function to check if file should be included
+function ShouldIncludeFile($filePath) {
+    $includePatterns = @(
+        "*.dart",
+        "build.gradle",
+        "settings.gradle",
+        "gradle.properties",
+        "gradle-wrapper.properties",
+        "AndroidManifest.xml",
+        "proguard-rules.pro",
+        "*.properties",
+        "google-services.json",
+        "*.yaml"
+    )
 
-# Create or clear the output file
-"FFTCG Companion App Codebase Export" | Out-File $outputFile
-"Generated: $(Get-Date -Format 'MM/dd/yyyy HH:mm:ss')" | Add-Content $outputFile
-"" | Add-Content $outputFile
+    foreach ($pattern in $includePatterns) {
+        if ($filePath -like $pattern) {
+            return $true
+        }
+    }
+    return $false
+}
 
-# Function to determine the language for code fence
-function Get-CodeFenceLanguage {
-    param($extension)
-    switch ($extension) {
-        ".dart"     { "dart" }
-        ".gradle"   { "gradle" }
-        ".xml"      { "xml" }
-        ".pro"      { "proguard" }
-        ".properties" { "properties" }
-        ".json"     { "json" }
-        ".yaml"     { "yaml" }
-        default     { "text" }
+# Function to get file content
+function GetFileContent($filePath) {
+    if (Test-Path $filePath) {
+        try {
+            $content = Get-Content $filePath -Raw -Encoding UTF8
+            return $content
+        }
+        catch {
+            Write-Warning "Could not read file: $filePath"
+            return $null
+        }
+    }
+    return $null
+}
+
+# Main script
+$projectRoot = "C:\VSCode\fftcg_companion_app"  # Adjust this path to your project root
+$outputFile = "codebase_export.json"
+$codeFiles = @{}
+
+# Get all files recursively
+Get-ChildItem -Path $projectRoot -Recurse -File | ForEach-Object {
+    $relativePath = $_.FullName.Replace($projectRoot + "\", "")
+    
+    if (-not (ShouldExcludeDirectory $_.FullName) -and (ShouldIncludeFile $_.Name)) {
+        $content = GetFileContent $_.FullName
+        if ($content) {
+            $codeFiles[$relativePath] = @{
+                content = $content
+                lastModified = $_.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+                size = $_.Length
+                extension = $_.Extension
+            }
+        }
     }
 }
 
-# Get all files matching patterns and excluding specified directories
-foreach ($pattern in $includePatterns) {
-    Get-ChildItem -Path $projectPath -Filter $pattern -Recurse | 
-        Where-Object { 
-            $include = $true
-            foreach ($dir in $excludeDirs) {
-                if ($_.FullName -like "*\$dir\*") {
-                    $include = $false
-                    break
-                }
-            }
-            $include
-        } | ForEach-Object {
-            # Add file path as header
-            "FILE: $($_.FullName.Replace($projectPath, ''))" | Add-Content $outputFile
-            
-            # Get language for code fence
-            $language = Get-CodeFenceLanguage $_.Extension
-            
-            # Add code fence with language
-            "``````$language" | Add-Content $outputFile
-            
-            # Add file content
-            Get-Content $_.FullName | Add-Content $outputFile
-            "``````" | Add-Content $outputFile
-            "" | Add-Content $outputFile
-        }
+# Create the export object
+$export = @{
+    timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    projectRoot = $projectRoot
+    files = $codeFiles
 }
 
-Write-Host "Codebase exported to: $outputFile"
+# Export to JSON file
+$export | ConvertTo-Json -Depth 100 | Out-File $outputFile -Encoding UTF8
+
+Write-Host "Export completed to $outputFile"
+Write-Host "Total files exported: $($codeFiles.Count)"

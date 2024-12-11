@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../repositories/card_repository.dart';
+import '../repositories/card_repository_facade.dart';
 import '../services/card_cache_service.dart';
 import 'card_notifier.dart';
 import 'card_state.dart';

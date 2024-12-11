@@ -35,6 +35,8 @@ class CardListItem extends StatelessWidget {
               errorWidget: (context, url, error) => const Center(
                 child: Icon(Icons.error),
               ),
+              memCacheWidth: 100,
+              maxWidthDiskCache: 200,
             ),
           ),
         ),

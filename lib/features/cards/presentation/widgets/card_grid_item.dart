@@ -40,6 +40,8 @@ class CardGridItem extends StatelessWidget {
                   errorWidget: (context, url, error) => const Center(
                     child: Icon(Icons.error),
                   ),
+                  memCacheWidth: useHighRes ? 400 : 200,
+                  maxWidthDiskCache: useHighRes ? 800 : 400,
                 ),
               ),
             ),

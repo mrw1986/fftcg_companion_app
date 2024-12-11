@@ -1,11 +1,15 @@
-# android/app/proguard-rules.pro
+# Flutter
 -keep class io.flutter.app.** { *; }
 -keep class io.flutter.plugin.**  { *; }
 -keep class io.flutter.util.**  { *; }
 -keep class io.flutter.view.**  { *; }
 -keep class io.flutter.**  { *; }
 -keep class io.flutter.plugins.**  { *; }
+
+# Firebase
 -keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+-dontwarn com.google.android.gms.**
 
 # Firebase Authentication
 -keepattributes Signature
@@ -29,3 +33,9 @@
 
 # Google Sign In
 -keep class com.google.android.gms.auth.** { *; }
+
+# Additional Google Play Services rules
+-keep class com.google.android.gms.common.ConnectionResult {
+    int SUCCESS;
+}
+-keep class com.google.android.gms.tasks.** { *; }

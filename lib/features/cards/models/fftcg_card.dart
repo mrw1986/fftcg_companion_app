@@ -63,7 +63,7 @@ class FFTCGCard extends HiveObject {
   @HiveField(17)
   DateTime? lastModifiedLocally;
 
-  // Convenience getters for common card properties (not stored in Hive directly)
+  // Convenience getters for common card properties
   String? get cardNumber => _getExtendedValue('Number');
   String? get description => _getExtendedValue('Description');
   String? get cardType => _getExtendedValue('CardType');
@@ -164,7 +164,7 @@ class FFTCGCard extends HiveObject {
   void markForSync() {
     syncStatus = SyncStatus.pending;
     lastModifiedLocally = DateTime.now();
-    save(); // Hive save method
+    save();
   }
 
   void markSynced() {
@@ -178,7 +178,6 @@ class FFTCGCard extends HiveObject {
     save();
   }
 
-  // Create a copy of the card with updated sync status
   FFTCGCard copyWith({
     int? categoryId,
     String? cleanName,

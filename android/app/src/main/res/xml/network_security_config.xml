@@ -14,20 +14,46 @@
     </base-config>
     
     <domain-config>
+        <!-- Firebase domains -->
         <domain includeSubdomains="true">googleapis.com</domain>
         <domain includeSubdomains="true">firebaseio.com</domain>
         <domain includeSubdomains="true">firebaseappcheck.googleapis.com</domain>
         <domain includeSubdomains="true">firebase.googleapis.com</domain>
         <domain includeSubdomains="true">firestore.googleapis.com</domain>
         <domain includeSubdomains="true">google.com</domain>
+        <domain includeSubdomains="true">gstatic.com</domain>
+        <domain includeSubdomains="true">googlesyndication.com</domain>
+        <domain includeSubdomains="true">googleusercontent.com</domain>
+        <domain includeSubdomains="true">appspot.com</domain>
+        
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
+        
         <pin-set expiration="2025-12-31">
             <!-- Google's PKI -->
             <pin digest="SHA-256">YZPgTZ+woNCCCIW3LH2CxQeLzB/1m42QcCTBSdgayjs=</pin>
             <!-- Backup pin -->
             <pin digest="SHA-256">sx8gDxNyVB6VjzNvA0M9S1OKYk1cOiKjhGIQm8TZ4Cs=</pin>
+            <!-- Additional Google backup pin -->
+            <pin digest="SHA-256">7HIpactkIAq2Y49orFOOQKurWxmmSFZhBCoQYcRhJ3Y=</pin>
         </pin-set>
+    </domain-config>
+
+    <!-- Firebase Storage specific config -->
+    <domain-config>
+        <domain includeSubdomains="true">storage.googleapis.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- Auth specific config -->
+    <domain-config>
+        <domain includeSubdomains="true">accounts.google.com</domain>
+        <domain includeSubdomains="true">oauth2.googleapis.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
     </domain-config>
 </network-security-config>
