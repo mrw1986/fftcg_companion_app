@@ -159,7 +159,7 @@ class FFTCGCompanionApp extends ConsumerWidget {
       return MaterialApp(
         theme: AppTheme.darkTheme,
         home: _buildErrorScreen(
-          appState.error!,
+          appState.error?.message ?? 'Unknown error',
           () => ref.read(appStateProvider.notifier).retryInitialization(),
         ),
         debugShowCheckedModeBanner: false,

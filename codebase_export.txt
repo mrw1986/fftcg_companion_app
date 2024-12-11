@@ -1,5 +1,5 @@
 FFTCG Companion App Codebase Export
-Generated: 12/11/2024 00:17:29
+Generated: 12/11/2024 13:04:47
 
 FILE: \lib\firebase_options.dart
 ```dart
@@ -215,7 +215,7 @@ class FFTCGCompanionApp extends ConsumerWidget {
       return MaterialApp(
         theme: AppTheme.darkTheme,
         home: _buildErrorScreen(
-          appState.error!,
+          appState.error?.message ?? 'Unknown error',
           () => ref.read(appStateProvider.notifier).retryInitialization(),
         ),
         debugShowCheckedModeBanner: false,
@@ -276,6 +276,244 @@ class FFTCGCompanionApp extends ConsumerWidget {
     );
   }
 }
+```
+
+FILE: \lib\core\error\app_error.dart
+```dart
+import 'package:firebase_auth/firebase_auth.dart';
+
+abstract class AppError implements Exception {
+  final String message;
+  final String code;
+  final dynamic originalError;
+  final StackTrace? stackTrace;
+
+  const AppError({
+    required this.message,
+    this.code = 'unknown',
+    this.originalError,
+    this.stackTrace,
+  });
+
+  @override
+  String toString() => 'Error[$code]: $message';
+}
+
+class AuthError extends AppError {
+  AuthError({
+    required super.message,
+    super.code = 'auth_error',
+    super.originalError,
+    super.stackTrace,
+  });
+
+  factory AuthError.fromFirebase(dynamic error, [StackTrace? stackTrace]) {
+    if (error is FirebaseAuthException) {
+      return AuthError(
+        message: _getFirebaseAuthErrorMessage(error.code),
+        code: error.code,
+        originalError: error,
+        stackTrace: stackTrace,
+      );
+    }
+    return AuthError(
+      message: 'Authentication failed',
+      originalError: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  static String _getFirebaseAuthErrorMessage(String code) {
+    switch (code) {
+      case 'user-not-found':
+        return 'No account exists with this email address';
+      case 'wrong-password':
+        return 'Incorrect password';
+      case 'invalid-email':
+        return 'Invalid email address';
+      case 'user-disabled':
+        return 'This account has been disabled';
+      case 'email-already-in-use':
+        return 'An account already exists with this email';
+      case 'operation-not-allowed':
+        return 'This operation is not allowed';
+      case 'weak-password':
+        return 'Please enter a stronger password';
+      case 'network-request-failed':
+        return 'Network error. Please check your connection';
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later';
+      case 'email-not-verified':
+        return 'Please verify your email before signing in';
+      default:
+        return 'Authentication failed: $code';
+    }
+  }
+}
+
+class NetworkError extends AppError {
+  NetworkError({
+    required super.message,
+    super.code = 'network_error',
+    super.originalError,
+    super.stackTrace,
+  });
+
+  factory NetworkError.noConnection() {
+    return NetworkError(
+      message: 'No internet connection available',
+      code: 'no_connection',
+    );
+  }
+
+  factory NetworkError.timeout() {
+    return NetworkError(
+      message: 'Request timed out',
+      code: 'timeout',
+    );
+  }
+}
+
+class DatabaseError extends AppError {
+  DatabaseError({
+    required super.message,
+    super.code = 'database_error',
+    super.originalError,
+    super.stackTrace,
+  });
+}
+
+class ValidationError extends AppError {
+  ValidationError({
+    required super.message,
+    super.code = 'validation_error',
+    super.originalError,
+    super.stackTrace,
+  });
+}
+
+class CacheError extends AppError {
+  CacheError({
+    required super.message,
+    super.code = 'cache_error',
+    super.originalError,
+    super.stackTrace,
+  });
+}
+
+class SyncError extends AppError {
+  SyncError({
+    required super.message,
+    super.code = 'sync_error',
+    super.originalError,
+    super.stackTrace,
+  });
+}
+
+class UnknownError extends AppError {
+  UnknownError({
+    required super.message,
+    super.code = 'unknown_error',
+    super.originalError,
+    super.stackTrace,
+  });
+}
+```
+
+FILE: \lib\core\error\error_handler.dart
+```dart
+import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../logging/logger_service.dart';
+import 'app_error.dart';
+
+class ErrorHandler {
+  final LoggerService _logger;
+
+  ErrorHandler({LoggerService? logger}) : _logger = logger ?? LoggerService();
+
+  Future<T> handleError<T>(
+    Future<T> Function() operation, {
+    String? context,
+    bool shouldRethrow = true,
+  }) async {
+    try {
+      return await operation();
+    } catch (error, stackTrace) {
+      final appError = _convertError(error, stackTrace);
+      _logger.error(
+        '${context ?? 'Operation'} failed: ${appError.message}',
+        appError.originalError ?? error,
+        stackTrace,
+      );
+
+      if (shouldRethrow) {
+        throw appError;
+      }
+
+      // Return a default value if we shouldn't rethrow
+      return _getDefaultValue<T>();
+    }
+  }
+
+  AppError _convertError(dynamic error, StackTrace stackTrace) {
+    if (error is AppError) {
+      return error;
+    }
+
+    if (error is FirebaseAuthException) {
+      return AuthError.fromFirebase(error, stackTrace);
+    }
+
+    if (error is FirebaseException) {
+      return DatabaseError(
+        message: error.message ?? 'Database operation failed',
+        code: error.code,
+        originalError: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    if (error is TimeoutException) {
+      return NetworkError.timeout();
+    }
+
+    return UnknownError(
+      message: error.toString(),
+      originalError: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  T _getDefaultValue<T>() {
+    if (T == int) {
+      return 0 as T;
+    } else if (T == double) {
+      return 0.0 as T;
+    } else if (T == bool) {
+      return false as T;
+    } else if (T == String) {
+      return '' as T;
+    } else if (T == List) {
+      return <dynamic>[] as T;
+    } else if (T == Map) {
+      return <dynamic, dynamic>{} as T;
+    }
+    return null as T;
+  }
+}
+```
+
+FILE: \lib\core\error\error_provider.dart
+```dart
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/app_providers.dart';
+import 'error_handler.dart';
+
+final errorHandlerProvider = Provider<ErrorHandler>((ref) {
+  final logger = ref.watch(loggerProvider);
+  return ErrorHandler(logger: logger);
+});
 ```
 
 FILE: \lib\core\logging\logger_service.dart
@@ -448,6 +686,64 @@ Details: ${exception.toString()}''';
 }
 ```
 
+FILE: \lib\core\mixins\error_handler_mixin.dart
+```dart
+import 'package:flutter/material.dart';
+import '../error/app_error.dart';
+import '../utils/error_utils.dart';
+
+mixin ErrorHandlerMixin<T extends StatefulWidget> on State<T> {
+  void handleError(AppError error, {VoidCallback? onRetry}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ErrorUtils.getUserFriendlyMessage(error)),
+        action: onRetry != null
+            ? SnackBarAction(
+                label: 'Retry',
+                onPressed: onRetry,
+              )
+            : null,
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> handleAsyncOperation(
+    Future<void> Function() operation, {
+    String? loadingMessage,
+    String? successMessage,
+    VoidCallback? onSuccess,
+  }) async {
+    try {
+      if (loadingMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(loadingMessage),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+
+      await operation();
+
+      if (successMessage != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(successMessage)),
+        );
+      }
+
+      onSuccess?.call();
+    } catch (error, stackTrace) {
+      final appError = ErrorUtils.handleError(error, stackTrace);
+      handleError(appError);
+    }
+  }
+}
+```
+
 FILE: \lib\core\models\sync_status.dart
 ```dart
 import 'package:hive/hive.dart';
@@ -530,6 +826,8 @@ import '../services/connectivity_service.dart';
 import '../services/sync_service.dart';
 import '../logging/logger_service.dart';
 import '../../firebase_options.dart';
+import '../error/app_error.dart';
+import '../error/error_provider.dart';
 
 final loggerProvider = Provider<LoggerService>((ref) {
   return LoggerService();
@@ -558,7 +856,7 @@ final initializationProvider = FutureProvider<bool>((ref) async {
 final connectivityStatusProvider = StreamProvider<bool>((ref) async* {
   final logger = ref.watch(loggerProvider);
   final connectivityService = ref.watch(connectivityServiceProvider);
-  
+
   try {
     await for (final status in connectivityService.connectivityStream) {
       logger.info('Connectivity status changed: $status');
@@ -570,32 +868,40 @@ final connectivityStatusProvider = StreamProvider<bool>((ref) async* {
   }
 });
 
-final appStateProvider = StateNotifierProvider<AppStateNotifier, AppState>((ref) {
+final appStateProvider =
+    StateNotifierProvider<AppStateNotifier, AppState>((ref) {
   return AppStateNotifier(ref);
 });
 
 class AppState {
   final bool isInitialized;
   final bool isOnline;
-  final String? error;
+  final AppError? error; // Changed from String? to AppError?
+  final bool isLoading;
 
   const AppState({
     this.isInitialized = false,
     this.isOnline = false,
     this.error,
+    this.isLoading = false,
   });
 
   AppState copyWith({
     bool? isInitialized,
     bool? isOnline,
-    String? error,
+    AppError? error,
+    bool? isLoading,
   }) {
     return AppState(
       isInitialized: isInitialized ?? this.isInitialized,
       isOnline: isOnline ?? this.isOnline,
-      error: error ?? this.error,
+      error: error, // Note: null will clear the error
+      isLoading: isLoading ?? this.isLoading,
     );
   }
+
+  bool get hasError => error != null;
+  String? get errorMessage => error?.message;
 }
 
 class AppStateNotifier extends StateNotifier<AppState> {
@@ -609,37 +915,101 @@ class AppStateNotifier extends StateNotifier<AppState> {
   }
 
   Future<void> _initialize() async {
+    final errorHandler = _ref.read(errorHandlerProvider);
+
     try {
-      final initializationStatus = await _ref.read(initializationProvider.future);
-      
-      if (!initializationStatus) {
+      final result = await errorHandler.handleError(
+        () async {
+          final initializationStatus =
+              await _ref.read(initializationProvider.future);
+
+          if (!initializationStatus) {
+            throw InitializationError(
+              message: 'Failed to initialize app',
+              code: 'initialization_failed',
+            );
+          }
+
+          // Start listening to connectivity
+          _ref.listen(connectivityStatusProvider, (previous, next) {
+            next.whenData((isOnline) {
+              state = state.copyWith(isOnline: isOnline);
+              if (isOnline) {
+                _ref.read(syncServiceProvider).syncPendingChanges();
+              }
+            });
+          });
+
+          return true;
+        },
+        context: 'App initialization',
+      );
+
+      if (result) {
         state = state.copyWith(
-          error: 'Failed to initialize app',
+          isInitialized: true,
+          error: null,
         );
-        return;
+        _logger.info('App state initialized successfully');
+      }
+    } catch (e, stack) {
+      final appError = e is AppError
+          ? e
+          : UnknownError(
+              message: e.toString(),
+              stackTrace: stack,
+            );
+
+      _logger.error('Error initializing app state', appError, stack);
+      state = state.copyWith(
+        error: appError,
+      );
+    }
+  }
+
+  void clearError() {
+    state = state.copyWith(error: null);
+  }
+
+  void setError(AppError error) {
+    state = state.copyWith(error: error);
+    _logger.error('App error: ${error.message}', error, error.stackTrace);
+  }
+
+  Future<T> handleOperation<T>({
+    required Future<T> Function() operation,
+    required String context,
+    bool setLoadingState = true,
+  }) async {
+    if (setLoadingState) {
+      state = state.copyWith(isLoading: true);
+    }
+
+    try {
+      final result = await _ref.read(errorHandlerProvider).handleError(
+            operation,
+            context: context,
+          );
+
+      if (setLoadingState) {
+        state = state.copyWith(isLoading: false);
       }
 
-      // Start listening to connectivity
-      _ref.listen(connectivityStatusProvider, (previous, next) {
-        next.whenData((isOnline) {
-          state = state.copyWith(isOnline: isOnline);
-          if (isOnline) {
-            _ref.read(syncServiceProvider).syncPendingChanges();
-          }
-        });
-      });
-
-      state = state.copyWith(
-        isInitialized: true,
-        error: null,
-      );
-
-      _logger.info('App state initialized successfully');
+      return result;
     } catch (e, stack) {
-      _logger.error('Error initializing app state', e, stack);
-      state = state.copyWith(
-        error: 'Failed to initialize app: ${e.toString()}',
-      );
+      if (setLoadingState) {
+        state = state.copyWith(isLoading: false);
+      }
+
+      final appError = e is AppError
+          ? e
+          : UnknownError(
+              message: e.toString(),
+              stackTrace: stack,
+            );
+
+      setError(appError);
+      throw appError;
     }
   }
 
@@ -647,6 +1017,25 @@ class AppStateNotifier extends StateNotifier<AppState> {
     state = const AppState();
     await _initialize();
   }
+}
+
+// Add this class to handle initialization errors specifically
+class InitializationError extends AppError {
+  InitializationError({
+    required super.message,
+    super.code = 'initialization_error',
+    super.originalError,
+    super.stackTrace,
+  });
+}
+
+class UnknownError extends AppError {
+  UnknownError({
+    super.message = 'An unknown error occurred',
+    super.code = 'unknown_error',
+    super.originalError,
+    super.stackTrace,
+  });
 }
 ```
 
@@ -1329,6 +1718,161 @@ class AppTheme {
 }
 ```
 
+FILE: \lib\core\utils\error_utils.dart
+```dart
+import '../error/app_error.dart';
+import '../logging/logger_service.dart';
+
+class ErrorUtils {
+  static final LoggerService _logger = LoggerService();
+
+  static AppError handleError(dynamic error, [StackTrace? stackTrace]) {
+    _logger.error('Error occurred', error, stackTrace);
+
+    if (error is AppError) {
+      return error;
+    }
+
+    // Determine error type and convert to appropriate AppError
+    final appError = _convertError(error, stackTrace);
+    _logger.error(
+      'Converted error: ${appError.message}',
+      appError.originalError ?? error,
+      appError.stackTrace ?? stackTrace,
+    );
+
+    return appError;
+  }
+
+  static AppError _convertError(dynamic error, StackTrace? stackTrace) {
+    if (error is TimeoutException) {
+      return NetworkError.timeout();
+    }
+
+    if (error is FormatException) {
+      return ValidationError(
+        message: error.message,
+        originalError: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    // Add more specific error type conversions as needed
+
+    return UnknownError(
+      message: error.toString(),
+      originalError: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  static String getUserFriendlyMessage(AppError error) {
+    switch (error.runtimeType) {
+      case NetworkError:
+        return 'Connection problem. Please check your internet connection and try again.';
+      case AuthError:
+        return error.message;
+      case ValidationError:
+        return 'Invalid input: ${error.message}';
+      case DatabaseError:
+        return 'Database error. Please try again later.';
+      case SyncError:
+        return 'Sync failed. Your changes will be saved locally and synced later.';
+      default:
+        return 'An unexpected error occurred. Please try again.';
+    }
+  }
+}
+```
+
+FILE: \lib\core\widgets\error_handler_widget.dart
+```dart
+import 'package:flutter/material.dart';
+import '../error/app_error.dart';
+import '../utils/error_utils.dart';
+
+class ErrorHandlerWidget extends StatelessWidget {
+  final AppError error;
+  final VoidCallback? onRetry;
+  final Widget? customError;
+
+  const ErrorHandlerWidget({
+    super.key,
+    required this.error,
+    this.onRetry,
+    this.customError,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (customError != null) {
+      return customError!;
+    }
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _getErrorIcon(),
+              size: 48,
+              color: _getErrorColor(context),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              ErrorUtils.getUserFriendlyMessage(error),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: _getErrorColor(context),
+                  ),
+            ),
+            if (error.code.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Error Code: ${error.code}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+            if (onRetry != null) ...[
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _getErrorIcon() {
+    return switch (error.runtimeType) {
+      NetworkError => Icons.cloud_off,
+      AuthError => Icons.security,
+      ValidationError => Icons.warning,
+      DatabaseError => Icons.storage,
+      SyncError => Icons.sync_problem,
+      _ => Icons.error_outline,
+    };
+  }
+
+  Color _getErrorColor(BuildContext context) {
+    return switch (error.runtimeType) {
+      NetworkError => Colors.orange,
+      AuthError => Colors.red,
+      ValidationError => Colors.yellow,
+      DatabaseError => Colors.red,
+      SyncError => Colors.orange,
+      _ => Theme.of(context).colorScheme.error,
+    };
+  }
+}
+```
+
 FILE: \lib\features\auth\enums\auth_status.dart
 ```dart
 enum AuthStatus {
@@ -1367,7 +1911,11 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   void initState() {
     super.initState();
     _logger.info('AuthWrapper initialized');
-    _startEmailVerificationCheck();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _startEmailVerificationCheck();
+      }
+    });
   }
 
   void _startEmailVerificationCheck() {
@@ -1375,6 +1923,8 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     _emailVerificationTimer = Timer.periodic(
       const Duration(seconds: 5),
       (_) {
+        if (!mounted) return;
+
         final authState = ref.read(authNotifierProvider);
         final user = authState.user;
 
@@ -1399,24 +1949,15 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
-
     _logger.info('Auth status: ${authState.status}');
 
-    switch (authState.status) {
-      case AuthStatus.authenticated:
-      case AuthStatus.guest:
-        return const CardsScreen();
-      case AuthStatus.unauthenticated:
-      case AuthStatus.error:
-        return const LoginScreen();
-      case AuthStatus.loading:
-      case AuthStatus.initial:
-        return const Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(),
-          ),
-        );
-    }
+    return switch (authState.status) {
+      AuthStatus.authenticated || AuthStatus.guest => const CardsScreen(),
+      AuthStatus.loading => const Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        ),
+      _ => const LoginScreen(), // includes unauthenticated and error states
+    };
   }
 }
 ```
@@ -1449,6 +1990,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _logger = LoggerService();
 
   @override
+  void initState() {
+    super.initState();
+    // Use addPostFrameCallback to modify state after build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(authNotifierProvider.notifier).clearError();
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
@@ -1465,6 +2017,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             );
       } catch (e, stackTrace) {
         _logger.error('Email login failed', e, stackTrace);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString()),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       }
     }
   }
@@ -1475,6 +2035,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref.read(authNotifierProvider.notifier).signInWithGoogle();
     } catch (e, stackTrace) {
       _logger.error('Google sign-in failed', e, stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
     }
   }
 
@@ -1484,29 +2049,82 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref.read(authNotifierProvider.notifier).signInAsGuest();
     } catch (e, stackTrace) {
       _logger.error('Guest login failed', e, stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
     }
   }
 
-  Future<void> _handlePasswordReset() async {
-    if (_emailController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter your email address'),
-        ),
-      );
-      return;
-    }
+  Future<void> _showPasswordResetDialog() async {
+    final TextEditingController emailController = TextEditingController(
+      text: _emailController.text, // Pre-fill with email if entered
+    );
 
+    final bool? result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Enter your email address and we\'ll send you a link to reset your password.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Send Reset Link'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      await _handlePasswordReset(emailController.text);
+    }
+  }
+
+  Future<void> _handlePasswordReset(String email) async {
     try {
-      _logger.info('Attempting password reset for: ${_emailController.text}');
-      await FirebaseAuth.instance.sendPasswordResetEmail(
-        email: _emailController.text.trim(),
-      );
+      _logger.info('Attempting password reset for: $email');
+      await ref
+          .read(authNotifierProvider.notifier)
+          .sendPasswordResetEmail(email);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Password reset email sent'),
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Reset Link Sent'),
+            content: const Text(
+              'If an account exists with this email address, '
+              'you will receive a password reset link shortly.\n\n'
+              'Please check your email and follow the instructions '
+              'to reset your password.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
           ),
         );
       }
@@ -1514,12 +2132,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _logger.error('Password reset failed', e, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to send password reset email'),
+          SnackBar(
+            content: Text(_getPasswordResetErrorMessage(e)),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
     }
+  }
+
+  String _getPasswordResetErrorMessage(dynamic error) {
+    if (error is FirebaseAuthException) {
+      switch (error.code) {
+        case 'invalid-email':
+          return 'The email address is invalid';
+        case 'user-not-found':
+          return 'If an account exists, you will receive an email shortly';
+        case 'too-many-requests':
+          return 'Too many attempts. Please try again later';
+        default:
+          return 'Failed to send reset email. Please try again';
+      }
+    }
+    return 'An error occurred. Please try again';
+  }
+
+  void _navigateToRegistration() {
+    // Clear any existing errors before navigating
+    ref.read(authNotifierProvider.notifier).clearError();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const RegistrationScreen(),
+      ),
+    );
   }
 
   @override
@@ -1575,7 +2220,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: _handlePasswordReset,
+                      onPressed: _showPasswordResetDialog,
                       child: const Text('Forgot Password?'),
                     ),
                   ),
@@ -1585,10 +2230,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       message: authState.errorMessage!,
                     ),
                   AuthButton(
-                    text: 'Login',
+                    text: 'Sign In',
                     onPressed: _handleEmailLogin,
                     isLoading: authState.status == AuthStatus.loading,
                   ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Or',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
                   AuthButton(
                     text: 'Continue with Google',
                     onPressed: _handleGoogleLogin,
@@ -1601,15 +2252,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     isLoading: authState.status == AuthStatus.loading,
                     isOutlined: true,
                   ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const RegistrationScreen(),
-                        ),
-                      );
-                    },
-                    child: const Text('Create an Account'),
+                  AuthButton(
+                    text: 'Create New Account',
+                    onPressed: _navigateToRegistration,
+                    isOutlined: true,
                   ),
                   // After your other buttons
                   IconButton(
@@ -1660,6 +2306,16 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
   final _logger = LoggerService();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(authNotifierProvider.notifier).clearError();
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _displayNameController.dispose();
     _emailController.dispose();
@@ -1677,6 +2333,33 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
               _passwordController.text,
               _displayNameController.text.trim(),
             );
+
+        if (mounted) {
+          // Clear any existing error state
+          ref.read(authNotifierProvider.notifier).clearError();
+
+          // Show success dialog
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('Account Created'),
+              content: const Text(
+                'Your account has been created successfully. Please check your email '
+                'to verify your account before signing in.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context); // Close dialog
+                    Navigator.pop(context); // Return to login screen
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
       } catch (e, stackTrace) {
         _logger.error('Registration failed', e, stackTrace);
       }
@@ -1885,7 +2568,7 @@ FILE: \lib\features\auth\presentation\widgets\auth_text_field.dart
 ```dart
 import 'package:flutter/material.dart';
 
-class AuthTextField extends StatelessWidget {
+class AuthTextField extends StatefulWidget {
   final TextEditingController controller;
   final String label;
   final bool isPassword;
@@ -1902,21 +2585,42 @@ class AuthTextField extends StatelessWidget {
   });
 
   @override
+  State<AuthTextField> createState() => _AuthTextFieldState();
+}
+
+class _AuthTextFieldState extends State<AuthTextField> {
+  bool _obscureText = true;
+
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: TextFormField(
-        controller: controller,
+        controller: widget.controller,
         decoration: InputDecoration(
-          labelText: label,
+          labelText: widget.label,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
           ),
           filled: true,
+          // Add suffix icon button for password fields
+          suffixIcon: widget.isPassword
+              ? IconButton(
+                  icon: Icon(
+                    _obscureText ? Icons.visibility : Icons.visibility_off,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _obscureText = !_obscureText;
+                    });
+                  },
+                  tooltip: _obscureText ? 'Show password' : 'Hide password',
+                )
+              : null,
         ),
-        obscureText: isPassword,
-        keyboardType: keyboardType,
-        validator: validator,
+        obscureText: widget.isPassword && _obscureText,
+        keyboardType: widget.keyboardType,
+        validator: widget.validator,
         autovalidateMode: AutovalidateMode.onUserInteraction,
       ),
     );
@@ -1926,9 +2630,8 @@ class AuthTextField extends StatelessWidget {
 
 FILE: \lib\features\auth\providers\auth_notifier.dart
 ```dart
-// lib/features/auth/providers/auth_notifier.dart
-
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/logging/logger_service.dart';
 import '../repositories/auth_repository.dart';
@@ -1953,55 +2656,78 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _authStateSubscription?.cancel();
     _authStateSubscription = _authRepository.authStateChanges.listen(
       (user) async {
-        if (user != null && user.isGuest) {
-          state = state.copyWith(status: AuthStatus.guest, user: user);
-        } else if (user != null) {
-          state = state.copyWith(status: AuthStatus.authenticated, user: user);
+        if (user == null) {
+          state = state.copyWith(
+            status: AuthStatus.unauthenticated,
+            user: null,
+            errorMessage: null,
+          );
+        } else if (user.isGuest) {
+          state = state.copyWith(
+            status: AuthStatus.guest,
+            user: user,
+            errorMessage: null,
+          );
         } else {
-          state =
-              state.copyWith(status: AuthStatus.unauthenticated, user: null);
+          state = state.copyWith(
+            status: AuthStatus.authenticated,
+            user: user,
+            errorMessage: null,
+          );
         }
+        _logger.info('Auth status: ${state.status}');
       },
       onError: (error, stackTrace) {
+        _logger.error('Auth state error', error, stackTrace);
         state = state.copyWith(
-            status: AuthStatus.error, errorMessage: error.toString());
+          status: AuthStatus.error,
+          errorMessage: error.toString(),
+        );
       },
     );
   }
 
+  void clearError() {
+    state = state.copyWith(errorMessage: null);
+  }
+
   Future<void> signInWithGoogle() async {
     try {
-      state = state.copyWith(status: AuthStatus.loading);
+      state = state.copyWith(
+        status: AuthStatus.loading,
+        errorMessage: null,
+      );
       _logger.info('Attempting Google sign in');
 
       await _authRepository.signInWithGoogle();
-
-      // State will be updated by the auth state listener
       _logger.info('Google sign in completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error signing in with Google', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to sign in with Google',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
     }
   }
 
   Future<void> signInWithEmailPassword(String email, String password) async {
     try {
-      state = state.copyWith(status: AuthStatus.loading);
+      state = state.copyWith(
+        status: AuthStatus.loading,
+        errorMessage: null,
+      );
       _logger.info('Attempting email/password sign in');
 
       await _authRepository.signInWithEmailPassword(email, password);
-
-      // State will be updated by the auth state listener
       _logger.info('Email/password sign in completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error signing in with email/password', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Invalid email or password',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
     }
   }
 
@@ -2011,7 +2737,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
     String displayName,
   ) async {
     try {
-      state = state.copyWith(status: AuthStatus.loading);
+      state = state.copyWith(
+        status: AuthStatus.loading,
+        errorMessage: null,
+      );
       _logger.info('Attempting user registration');
 
       await _authRepository.registerWithEmailPassword(
@@ -2019,21 +2748,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
         password,
         displayName,
       );
-
-      // State will be updated by the auth state listener
       _logger.info('User registration completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error registering with email/password', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to create account',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
     }
   }
 
   Future<void> signInAsGuest() async {
     try {
-      state = state.copyWith(status: AuthStatus.loading);
+      state = state.copyWith(
+        status: AuthStatus.loading,
+        errorMessage: null,
+      );
       _logger.info('Attempting guest sign in');
 
       final guestUser = await _authRepository.signInAsGuest();
@@ -2051,26 +2782,29 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.error('Error signing in as guest', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to continue as guest',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
     }
   }
 
   Future<void> signOut() async {
     try {
-      state = state.copyWith(status: AuthStatus.loading);
+      state = state.copyWith(
+        status: AuthStatus.loading,
+        errorMessage: null,
+      );
       _logger.info('Attempting sign out');
 
       await _authRepository.signOut();
-
-      // State will be updated by the auth state listener
       _logger.info('Sign out completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error signing out', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to sign out',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
     }
   }
 
@@ -2083,8 +2817,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.error('Error sending email verification', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to send verification email',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
     }
   }
 
@@ -2096,8 +2831,34 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.error('Error checking email verification', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to check email verification',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
+    }
+  }
+
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      state = state.copyWith(
+        status: AuthStatus.loading,
+        errorMessage: null,
+      );
+      _logger.info('Sending password reset email');
+
+      await _authRepository.sendPasswordResetEmail(email);
+
+      state = state.copyWith(
+        status: AuthStatus.unauthenticated,
+        errorMessage: null,
+      );
+      _logger.info('Password reset email sent successfully');
+    } catch (e, stackTrace) {
+      _logger.error('Error sending password reset email', e, stackTrace);
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: _getErrorMessage(e),
+      );
+      rethrow;
     }
   }
 
@@ -2105,6 +2866,36 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _logger.info('Retrying auth initialization');
     state = AuthState();
     _initialize();
+  }
+
+  String _getErrorMessage(dynamic error) {
+    if (error is FirebaseAuthException) {
+      switch (error.code) {
+        case 'user-not-found':
+          return 'No account exists with this email address';
+        case 'wrong-password':
+          return 'Incorrect password';
+        case 'invalid-email':
+          return 'Invalid email address';
+        case 'user-disabled':
+          return 'This account has been disabled';
+        case 'email-already-in-use':
+          return 'An account already exists with this email';
+        case 'operation-not-allowed':
+          return 'This operation is not allowed';
+        case 'weak-password':
+          return 'Please enter a stronger password';
+        case 'network-request-failed':
+          return 'Network error. Please check your connection';
+        case 'too-many-requests':
+          return 'Too many attempts. Please try again later';
+        case 'email-not-verified':
+          return 'Please verify your email before signing in';
+        default:
+          return 'Authentication failed: ${error.message}';
+      }
+    }
+    return 'Authentication failed: ${error.toString()}';
   }
 
   @override
@@ -2207,6 +2998,16 @@ class AuthRepository {
   Stream<UserModel?> get authStateChanges => _authService.authStateChanges
       .asyncMap((user) => user != null ? _authService.getCurrentUser() : null);
 
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _authService.sendPasswordResetEmail(email);
+    } catch (e, stackTrace) {
+      _logger.error(
+          'Error sending password reset email in repository', e, stackTrace);
+      rethrow;
+    }
+  }
+  
   Future<UserModel?> getCurrentUser() async {
     try {
       // Check for guest session first
@@ -2380,6 +3181,26 @@ class AuthService {
     } catch (e, stackTrace) {
       _logger.error('Error getting current user', e, stackTrace);
       return null;
+    }
+  }
+
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(
+        email: email.trim(),
+        actionCodeSettings: ActionCodeSettings(
+          url:
+              'https://fftcg-sync-service.firebaseapp.com/__/auth/action', // Your Firebase hosting URL
+          handleCodeInApp: true,
+          androidPackageName: 'com.mrw1986.fftcg_companion_app',
+          androidInstallApp: true,
+          androidMinimumVersion: '23',
+        ),
+      );
+      _logger.info('Password reset email sent successfully');
+    } catch (e, stackTrace) {
+      _logger.error('Error sending password reset email', e, stackTrace);
+      rethrow;
     }
   }
 
@@ -2689,15 +3510,15 @@ class AuthService {
   String _getReadableAuthError(String code) {
     switch (code) {
       case 'user-not-found':
-        return 'No account found with this email address';
+        return 'No account exists with this email. Please create an account first.';
       case 'wrong-password':
-        return 'Incorrect password';
+        return 'Incorrect password. Please try again or use Reset Password.';
       case 'invalid-email':
-        return 'Invalid email address';
+        return 'Please enter a valid email address.';
       case 'user-disabled':
-        return 'This account has been disabled';
+        return 'This account has been disabled.';
       case 'email-already-in-use':
-        return 'An account already exists with this email';
+        return 'An account already exists with this email. Please sign in instead.';
       case 'operation-not-allowed':
         return 'This operation is not allowed';
       case 'weak-password':
@@ -3574,7 +4395,9 @@ import '../widgets/filter_bottom_sheet.dart';
 import '../widgets/sort_menu_button.dart';
 import '../widgets/search_bar_widget.dart';
 import '../../../../core/logging/logger_service.dart';
-import '../../providers/card_state.dart'; // Add this import
+import '../../providers/card_state.dart';
+import '../../../auth/providers/auth_providers.dart';
+import '../../../settings/presentation/screens/offline_management_screen.dart';
 
 class CardsScreen extends ConsumerStatefulWidget {
   const CardsScreen({super.key});
@@ -3616,9 +4439,34 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
     );
   }
 
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await ref.read(authNotifierProvider.notifier).signOut();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cardState = ref.watch(cardNotifierProvider);
+    final user = ref.watch(currentUserProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -3635,10 +4483,62 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
             icon: const Icon(Icons.filter_list),
             onPressed: _showFilterBottomSheet,
           ),
+          PopupMenuButton(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              switch (value) {
+                case 'offline':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const OfflineManagementScreen(),
+                    ),
+                  );
+                  break;
+                case 'logout':
+                  _handleLogout();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'offline',
+                child: Row(
+                  children: [
+                    Icon(Icons.offline_bolt),
+                    SizedBox(width: 8),
+                    Text('Offline Management'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout),
+                    SizedBox(width: 8),
+                    Text('Logout'),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(56),
-          child: CardSearchBar(),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(80),
+          child: Column(
+            children: [
+              const CardSearchBar(),
+              if (user != null && !user.isGuest)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Text(
+                    'Welcome, ${user.displayName ?? 'User'}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
       body: RefreshIndicator(

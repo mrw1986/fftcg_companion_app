@@ -53,7 +53,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _logger.error('Email login failed', e, stackTrace);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString())),
+            SnackBar(
+              content: Text(e.toString()),
+              duration: const Duration(seconds: 3),
+            ),
           );
         }
       }

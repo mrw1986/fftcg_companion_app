@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/logging/logger_service.dart';
 import '../repositories/auth_repository.dart';
@@ -23,18 +24,33 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _authStateSubscription?.cancel();
     _authStateSubscription = _authRepository.authStateChanges.listen(
       (user) async {
-        if (user != null && user.isGuest) {
-          state = state.copyWith(status: AuthStatus.guest, user: user);
-        } else if (user != null) {
-          state = state.copyWith(status: AuthStatus.authenticated, user: user);
+        if (user == null) {
+          state = state.copyWith(
+            status: AuthStatus.unauthenticated,
+            user: null,
+            errorMessage: null,
+          );
+        } else if (user.isGuest) {
+          state = state.copyWith(
+            status: AuthStatus.guest,
+            user: user,
+            errorMessage: null,
+          );
         } else {
-          state =
-              state.copyWith(status: AuthStatus.unauthenticated, user: null);
+          state = state.copyWith(
+            status: AuthStatus.authenticated,
+            user: user,
+            errorMessage: null,
+          );
         }
+        _logger.info('Auth status: ${state.status}');
       },
       onError: (error, stackTrace) {
+        _logger.error('Auth state error', error, stackTrace);
         state = state.copyWith(
-            status: AuthStatus.error, errorMessage: error.toString());
+          status: AuthStatus.error,
+          errorMessage: error.toString(),
+        );
       },
     );
   }
@@ -52,15 +68,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.info('Attempting Google sign in');
 
       await _authRepository.signInWithGoogle();
-
-      // State will be updated by the auth state listener
       _logger.info('Google sign in completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error signing in with Google', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to sign in with Google',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
     }
   }
 
@@ -73,15 +88,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.info('Attempting email/password sign in');
 
       await _authRepository.signInWithEmailPassword(email, password);
-
-      // State will be updated by the auth state listener
       _logger.info('Email/password sign in completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error signing in with email/password', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Invalid email or password',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
     }
   }
 
@@ -102,15 +116,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
         password,
         displayName,
       );
-
-      // State will be updated by the auth state listener
       _logger.info('User registration completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error registering with email/password', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to create account',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
     }
   }
 
@@ -137,8 +150,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.error('Error signing in as guest', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to continue as guest',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
     }
   }
 
@@ -151,15 +165,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.info('Attempting sign out');
 
       await _authRepository.signOut();
-
-      // State will be updated by the auth state listener
       _logger.info('Sign out completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error signing out', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to sign out',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
     }
   }
 
@@ -172,8 +185,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.error('Error sending email verification', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to send verification email',
+        errorMessage: _getErrorMessage(e),
       );
+      rethrow;
+    }
+  }
+
+  Future<void> checkEmailVerification() async {
+    try {
+      _logger.info('Checking email verification status');
+      await _authRepository.checkEmailVerification();
+    } catch (e, stackTrace) {
+      _logger.error('Error checking email verification', e, stackTrace);
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: _getErrorMessage(e),
+      );
+      rethrow;
     }
   }
 
@@ -196,22 +224,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.error('Error sending password reset email', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to send password reset email',
+        errorMessage: _getErrorMessage(e),
       );
       rethrow;
-    }
-  }
-
-  Future<void> checkEmailVerification() async {
-    try {
-      _logger.info('Checking email verification status');
-      await _authRepository.checkEmailVerification();
-    } catch (e, stackTrace) {
-      _logger.error('Error checking email verification', e, stackTrace);
-      state = state.copyWith(
-        status: AuthStatus.error,
-        errorMessage: 'Failed to check email verification',
-      );
     }
   }
 
@@ -219,6 +234,36 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _logger.info('Retrying auth initialization');
     state = AuthState();
     _initialize();
+  }
+
+  String _getErrorMessage(dynamic error) {
+    if (error is FirebaseAuthException) {
+      switch (error.code) {
+        case 'user-not-found':
+          return 'No account exists with this email address';
+        case 'wrong-password':
+          return 'Incorrect password';
+        case 'invalid-email':
+          return 'Invalid email address';
+        case 'user-disabled':
+          return 'This account has been disabled';
+        case 'email-already-in-use':
+          return 'An account already exists with this email';
+        case 'operation-not-allowed':
+          return 'This operation is not allowed';
+        case 'weak-password':
+          return 'Please enter a stronger password';
+        case 'network-request-failed':
+          return 'Network error. Please check your connection';
+        case 'too-many-requests':
+          return 'Too many attempts. Please try again later';
+        case 'email-not-verified':
+          return 'Please verify your email before signing in';
+        default:
+          return 'Authentication failed: ${error.message}';
+      }
+    }
+    return 'Authentication failed: ${error.toString()}';
   }
 
   @override

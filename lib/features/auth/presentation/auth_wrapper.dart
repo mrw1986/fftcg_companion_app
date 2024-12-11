@@ -34,6 +34,8 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     _emailVerificationTimer = Timer.periodic(
       const Duration(seconds: 5),
       (_) {
+        if (!mounted) return;
+
         final authState = ref.read(authNotifierProvider);
         final user = authState.user;
 
@@ -58,23 +60,14 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
-
     _logger.info('Auth status: ${authState.status}');
 
-    switch (authState.status) {
-      case AuthStatus.authenticated:
-      case AuthStatus.guest:
-        return const CardsScreen();
-      case AuthStatus.unauthenticated:
-      case AuthStatus.error:
-        return const LoginScreen();
-      case AuthStatus.loading:
-      case AuthStatus.initial:
-        return const Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(),
-          ),
-        );
-    }
+    return switch (authState.status) {
+      AuthStatus.authenticated || AuthStatus.guest => const CardsScreen(),
+      AuthStatus.loading => const Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        ),
+      _ => const LoginScreen(), // includes unauthenticated and error states
+    };
   }
 }
