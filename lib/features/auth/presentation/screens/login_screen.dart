@@ -8,6 +8,7 @@ import '../widgets/auth_text_field.dart';
 import '../widgets/auth_error_widget.dart';
 import '../../../../core/logging/logger_service.dart';
 import 'registration_screen.dart';
+import '../../../settings/presentation/screens/logs_viewer_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -184,6 +185,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       );
                     },
                     child: const Text('Create an Account'),
+                  ),
+                  // After your other buttons
+                  IconButton(
+                    icon: const Icon(Icons.bug_report),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const LogsViewerScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),

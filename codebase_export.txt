@@ -1,5 +1,5 @@
 FFTCG Companion App Codebase Export
-Generated: 12/10/2024 18:08:35
+Generated: 12/10/2024 23:22:44
 
 FILE: \lib\firebase_options.dart
 ```dart
@@ -1433,6 +1433,7 @@ import '../widgets/auth_text_field.dart';
 import '../widgets/auth_error_widget.dart';
 import '../../../../core/logging/logger_service.dart';
 import 'registration_screen.dart';
+import '../../features/settings/presentation/screens/logs_viewer_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -1609,6 +1610,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       );
                     },
                     child: const Text('Create an Account'),
+                  ),
+                  // After your other buttons
+                  IconButton(
+                    icon: const Icon(Icons.bug_report),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const LogsViewerScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1938,62 +1950,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   void _initialize() {
-    _logger.info('Initializing AuthNotifier');
     _authStateSubscription?.cancel();
     _authStateSubscription = _authRepository.authStateChanges.listen(
       (user) async {
-        try {
-          if (user != null) {
-            // Check if it's a guest user
-            if (user.isGuest) {
-              _logger.info('Guest user session detected');
-              state = state.copyWith(
-                status: AuthStatus.guest,
-                user: user,
-                errorMessage: null,
-              );
-            } else {
-              _logger.info('Authenticated user session detected');
-              state = state.copyWith(
-                status: AuthStatus.authenticated,
-                user: user,
-                errorMessage: null,
-              );
-            }
-          } else {
-            // Check if we have a guest session
-            final isGuest = await _authRepository.isGuestSession();
-            if (isGuest) {
-              _logger.info('Restoring guest session');
-              final guestUser = await _authRepository.getCurrentUser();
-              state = state.copyWith(
-                status: AuthStatus.guest,
-                user: guestUser,
-                errorMessage: null,
-              );
-            } else {
-              _logger.info('No active session detected');
-              state = state.copyWith(
-                status: AuthStatus.unauthenticated,
-                user: null,
-                errorMessage: null,
-              );
-            }
-          }
-        } catch (e, stackTrace) {
-          _logger.error('Error in auth state change handler', e, stackTrace);
-          state = state.copyWith(
-            status: AuthStatus.error,
-            errorMessage: 'Failed to process authentication state',
-          );
+        if (user != null && user.isGuest) {
+          state = state.copyWith(status: AuthStatus.guest, user: user);
+        } else if (user != null) {
+          state = state.copyWith(status: AuthStatus.authenticated, user: user);
+        } else {
+          state =
+              state.copyWith(status: AuthStatus.unauthenticated, user: null);
         }
       },
       onError: (error, stackTrace) {
-        _logger.error('Auth state stream error', error, stackTrace);
         state = state.copyWith(
-          status: AuthStatus.error,
-          errorMessage: 'Authentication error occurred',
-        );
+            status: AuthStatus.error, errorMessage: error.toString());
       },
     );
   }
@@ -2066,7 +2037,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.info('Attempting guest sign in');
 
       final guestUser = await _authRepository.signInAsGuest();
-
       if (guestUser != null) {
         state = state.copyWith(
           status: AuthStatus.guest,
@@ -2206,33 +2176,65 @@ class AuthState {
 
 FILE: \lib\features\auth\repositories\auth_repository.dart
 ```dart
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../../../core/logging/logger_service.dart';
 
 class AuthRepository {
+  static const String _guestPrefsKey = 'guest_session';
   final AuthService _authService;
   final LoggerService _logger;
-
-  Future<bool> isGuestSession() async {
-    return _authService.isGuestSession();
-  }
+  final FirebaseFirestore _firestore;
+  final FirebaseAuth _auth;
 
   AuthRepository({
     AuthService? authService,
     LoggerService? logger,
+    FirebaseFirestore? firestore,
+    FirebaseAuth? auth,
   })  : _authService = authService ?? AuthService(),
-        _logger = logger ?? LoggerService();
+        _logger = logger ?? LoggerService(),
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _auth = auth ?? FirebaseAuth.instance;
+
+  Future<bool> isGuestSession() async {
+    return _authService.isGuestSession();
+  }
 
   Stream<UserModel?> get authStateChanges => _authService.authStateChanges
       .asyncMap((user) => user != null ? _authService.getCurrentUser() : null);
 
   Future<UserModel?> getCurrentUser() async {
     try {
-      return await _authService.getCurrentUser();
+      // Check for guest session first
+      final prefs = await SharedPreferences.getInstance();
+      final guestData = prefs.getString(_guestPrefsKey);
+
+      if (guestData != null) {
+        _logger.info('Found guest session data');
+        try {
+          return UserModel.fromJson(guestData);
+        } catch (e) {
+          _logger.error('Error parsing guest data', e);
+          await prefs.remove(_guestPrefsKey);
+        }
+      }
+
+      // Check for authenticated user
+      final User? user = _auth.currentUser;
+      if (user == null) return null;
+
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+      if (doc.exists) {
+        return UserModel.fromFirestore(doc);
+      }
+      return null;
     } catch (e, stackTrace) {
-      _logger.error('Error getting current user in repository', e, stackTrace);
-      rethrow;
+      _logger.error('Error getting current user', e, stackTrace);
+      return null;
     }
   }
 
@@ -2329,6 +2331,7 @@ import 'package:flutter/foundation.dart';
 import '../../../core/logging/logger_service.dart';
 import '../../../models/user_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 
 class AuthService {
   final FirebaseAuth _auth;
@@ -2337,8 +2340,7 @@ class AuthService {
   final LoggerService _logger;
 
   static const String _guestPrefsKey = 'guest_session';
-  static const int _maxRetries = 3;
-  static const Duration _retryDelay = Duration(seconds: 2);
+  static const Duration _timeout = Duration(seconds: 30);
 
   AuthService({
     FirebaseAuth? auth,
@@ -2346,11 +2348,17 @@ class AuthService {
     FirebaseFirestore? firestore,
     LoggerService? logger,
   })  : _auth = auth ?? FirebaseAuth.instance,
-        _googleSignIn = googleSignIn ?? GoogleSignIn(),
+        _googleSignIn = googleSignIn ??
+            GoogleSignIn(
+              scopes: ['email', 'profile'],
+              signInOption: SignInOption.standard,
+              hostedDomain: '', // Allow any domain
+            ),
         _firestore = firestore ?? FirebaseFirestore.instance,
         _logger = logger ?? LoggerService();
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
+  User? get currentUser => _auth.currentUser;
 
   Future<UserModel?> getCurrentUser() async {
     try {
@@ -2380,58 +2388,83 @@ class AuthService {
     try {
       await _verifyConnectivityAndAppCheck();
 
-      final GoogleSignInAccount? googleUser = await _retryOperation(
-        () => _googleSignIn.signIn(),
-      );
+      // Sign out of any existing sessions first
+      await _googleSignIn.signOut();
+
+      // Begin interactive sign in process with timeout
+      final GoogleSignInAccount? googleUser =
+          await _googleSignIn.signIn().timeout(_timeout, onTimeout: () {
+        throw CustomAuthException(
+          code: 'timeout',
+          message: 'Sign in process timed out. Please try again.',
+        );
+      });
 
       if (googleUser == null) {
         _logger.warning('Google sign in cancelled by user');
         return null;
       }
 
+      // Get authentication details
       final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-
-      if (googleAuth.accessToken == null || googleAuth.idToken == null) {
+          await googleUser.authentication.timeout(_timeout, onTimeout: () {
         throw CustomAuthException(
-          code: 'google-signin-failed',
-          message: 'Failed to get Google authentication tokens',
+          code: 'auth-timeout',
+          message: 'Authentication process timed out. Please try again.',
         );
-      }
+      });
 
-      final credential = GoogleAuthProvider.credential(
+      // Create Firebase credential
+      final OAuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      final UserCredential userCredential = await _retryOperation(
-        () => _auth.signInWithCredential(credential),
-      );
-
-      if (userCredential.user == null) {
+      // Sign in to Firebase
+      final UserCredential userCredential = await _auth
+          .signInWithCredential(credential)
+          .timeout(_timeout, onTimeout: () {
         throw CustomAuthException(
-          code: 'google-signin-failed',
-          message: 'Failed to sign in with Google: No user returned',
+          code: 'firebase-timeout',
+          message: 'Firebase authentication timed out. Please try again.',
+        );
+      });
+
+      final user = userCredential.user;
+      if (user == null) {
+        throw CustomAuthException(
+          code: 'null-user',
+          message: 'Failed to get user details from Firebase',
         );
       }
 
       // Clear any existing guest session
       await _clearGuestSession();
 
-      return await _createOrUpdateUser(userCredential.user!);
-    } on FirebaseAuthException catch (e, stackTrace) {
-      _logger.error('Firebase Auth Error signing in with Google: ${e.message}',
-          e, stackTrace);
-      throw CustomAuthException(
-        code: e.code,
-        message: _getReadableAuthError(e.code),
-      );
+      // Create or update user document
+      return await _createOrUpdateUser(user);
     } catch (e, stackTrace) {
       _logger.error('Error signing in with Google', e, stackTrace);
-      throw CustomAuthException(
-        code: 'unknown',
-        message: 'Failed to sign in with Google: ${e.toString()}',
-      );
+
+      if (e is FirebaseAuthException) {
+        throw CustomAuthException(
+          code: e.code,
+          message: _getReadableAuthError(e.code),
+        );
+      } else if (e is TimeoutException) {
+        throw CustomAuthException(
+          code: 'timeout',
+          message:
+              'Operation timed out. Please check your connection and try again.',
+        );
+      } else if (e is CustomAuthException) {
+        rethrow;
+      } else {
+        throw CustomAuthException(
+          code: 'unknown',
+          message: 'Failed to sign in with Google: ${e.toString()}',
+        );
+      }
     }
   }
 
@@ -2440,27 +2473,25 @@ class AuthService {
     try {
       await _verifyConnectivityAndAppCheck();
 
-      final UserCredential userCredential = await _retryOperation(
-        () => _auth.signInWithEmailAndPassword(
-          email: email.trim(),
-          password: password,
-        ),
-      );
+      final userCredential = await _auth
+          .signInWithEmailAndPassword(
+            email: email.trim(),
+            password: password,
+          )
+          .timeout(_timeout);
 
-      if (userCredential.user == null) {
+      final user = userCredential.user;
+      if (user == null) {
         throw CustomAuthException(
-          code: 'email-signin-failed',
-          message: 'Failed to sign in with email: No user returned',
+          code: 'null-user',
+          message: 'Failed to get user details from Firebase',
         );
       }
 
-      // Clear any existing guest session
       await _clearGuestSession();
-
-      return await _createOrUpdateUser(userCredential.user!);
+      return await _createOrUpdateUser(user);
     } on FirebaseAuthException catch (e, stackTrace) {
-      _logger.error('Firebase Auth Error signing in with email: ${e.message}',
-          e, stackTrace);
+      _logger.error('Firebase Auth Error: ${e.message}', e, stackTrace);
       throw CustomAuthException(
         code: e.code,
         message: _getReadableAuthError(e.code),
@@ -2469,7 +2500,7 @@ class AuthService {
       _logger.error('Error signing in with email/password', e, stackTrace);
       throw CustomAuthException(
         code: 'unknown',
-        message: 'Failed to sign in with email: ${e.toString()}',
+        message: 'Authentication failed: ${e.toString()}',
       );
     }
   }
@@ -2478,7 +2509,6 @@ class AuthService {
     try {
       _logger.info('Creating guest session');
 
-      // Create a guest user with a unique ID
       final guestUser = UserModel(
         id: 'guest_${DateTime.now().millisecondsSinceEpoch}',
         displayName: 'Guest User',
@@ -2487,18 +2517,23 @@ class AuthService {
         lastLoginAt: DateTime.now(),
       );
 
-      // Store guest user data
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_guestPrefsKey, guestUser.toJson());
+      final guestDataJson = guestUser.toJson();
+      _logger.info('Saving guest data: $guestDataJson');
+
+      final result = await prefs.setString(_guestPrefsKey, guestDataJson);
+      if (!result) {
+        throw CustomAuthException(
+          code: 'guest-session-save-failed',
+          message: 'Failed to save guest session',
+        );
+      }
 
       _logger.info('Guest session created successfully');
       return guestUser;
     } catch (e, stackTrace) {
       _logger.error('Error creating guest session', e, stackTrace);
-      throw CustomAuthException(
-        code: 'guest-session-failed',
-        message: 'Failed to create guest session: ${e.toString()}',
-      );
+      rethrow;
     }
   }
 
@@ -2529,30 +2564,28 @@ class AuthService {
     try {
       await _verifyConnectivityAndAppCheck();
 
-      final UserCredential userCredential = await _retryOperation(
-        () => _auth.createUserWithEmailAndPassword(
-          email: email.trim(),
-          password: password,
-        ),
-      );
+      final userCredential = await _auth
+          .createUserWithEmailAndPassword(
+            email: email.trim(),
+            password: password,
+          )
+          .timeout(_timeout);
 
-      if (userCredential.user == null) {
+      final user = userCredential.user;
+      if (user == null) {
         throw CustomAuthException(
-          code: 'registration-failed',
-          message: 'Failed to create account: No user returned',
+          code: 'null-user',
+          message: 'Failed to create user account',
         );
       }
 
-      await userCredential.user?.updateDisplayName(displayName.trim());
-      await userCredential.user?.sendEmailVerification();
-
-      // Clear any existing guest session
+      await user.updateDisplayName(displayName.trim());
+      await user.sendEmailVerification();
       await _clearGuestSession();
 
-      return await _createOrUpdateUser(userCredential.user!);
+      return await _createOrUpdateUser(user);
     } on FirebaseAuthException catch (e, stackTrace) {
-      _logger.error(
-          'Firebase Auth Error registering user: ${e.message}', e, stackTrace);
+      _logger.error('Firebase Auth Error: ${e.message}', e, stackTrace);
       throw CustomAuthException(
         code: e.code,
         message: _getReadableAuthError(e.code),
@@ -2561,21 +2594,19 @@ class AuthService {
       _logger.error('Error registering with email/password', e, stackTrace);
       throw CustomAuthException(
         code: 'unknown',
-        message: 'Failed to create account: ${e.toString()}',
+        message: 'Registration failed: ${e.toString()}',
       );
     }
   }
 
   Future<void> signOut() async {
     try {
-      // Check if we're in a guest session
       if (await isGuestSession()) {
         await _clearGuestSession();
         _logger.info('Guest session cleared');
         return;
       }
 
-      // Regular sign out process
       await Future.wait([
         _auth.signOut(),
         _googleSignIn.signOut(),
@@ -2590,13 +2621,14 @@ class AuthService {
   Future<UserModel> _createOrUpdateUser(User user) async {
     final userDoc = _firestore.collection('users').doc(user.uid);
 
-    final UserModel userData = UserModel(
+    final userData = UserModel(
       id: user.uid,
       email: user.email,
       displayName: user.displayName ?? 'User ${user.uid.substring(0, 4)}',
       isGuest: false,
       isEmailVerified: user.emailVerified,
       lastLoginAt: DateTime.now(),
+      createdAt: DateTime.now(),
     );
 
     try {
@@ -2628,7 +2660,7 @@ class AuthService {
     try {
       final user = _auth.currentUser;
       if (user != null && !user.emailVerified) {
-        await _retryOperation(() => user.sendEmailVerification());
+        await user.sendEmailVerification().timeout(_timeout);
         _logger.info('Verification email sent to ${user.email}');
       }
     } catch (e, stackTrace) {
@@ -2641,7 +2673,7 @@ class AuthService {
     try {
       final user = _auth.currentUser;
       if (user != null) {
-        await _retryOperation(() => user.reload());
+        await user.reload().timeout(_timeout);
         _logger.info('Email verification status: ${user.emailVerified}');
       }
     } catch (e, stackTrace) {
@@ -2651,9 +2683,7 @@ class AuthService {
   }
 
   Future<void> _verifyConnectivityAndAppCheck() async {
-    final List<ConnectivityResult> connectivityResult =
-        await Connectivity().checkConnectivity();
-
+    final connectivityResult = await Connectivity().checkConnectivity();
     if (connectivityResult.contains(ConnectivityResult.none)) {
       throw CustomAuthException(
         code: 'no-connection',
@@ -2663,7 +2693,8 @@ class AuthService {
 
     if (!kDebugMode) {
       try {
-        final token = await FirebaseAppCheck.instance.getToken(true);
+        final token =
+            await FirebaseAppCheck.instance.getToken(true).timeout(_timeout);
         if (token == null) {
           throw CustomAuthException(
             code: 'app-check-failed',
@@ -2678,25 +2709,6 @@ class AuthService {
         );
       }
     }
-  }
-
-  Future<T> _retryOperation<T>(Future<T> Function() operation) async {
-    int attempts = 0;
-    while (attempts < _maxRetries) {
-      try {
-        return await operation();
-      } catch (e) {
-        attempts++;
-        if (attempts >= _maxRetries) rethrow;
-        await Future.delayed(_retryDelay);
-        _logger.warning(
-            'Retry attempt $attempts for operation after error: ${e.toString()}');
-      }
-    }
-    throw CustomAuthException(
-      code: 'retry-failed',
-      message: 'Operation failed after $_maxRetries attempts',
-    );
   }
 
   String _getReadableAuthError(String code) {
@@ -2719,6 +2731,8 @@ class AuthService {
         return 'Network error. Please check your connection';
       case 'too-many-requests':
         return 'Too many attempts. Please try again later';
+      case 'timeout':
+        return 'Operation timed out. Please try again';
       case 'app-check-failed':
         return 'App verification failed. Please ensure you\'re using an official version';
       case 'no-connection':
@@ -5524,6 +5538,174 @@ class CardCacheService {
 }
 ```
 
+FILE: \lib\features\settings\presentation\screens\logs_viewer_screen.dart
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/logging/logger_service.dart';
+import 'package:share_plus/share_plus.dart';
+
+class LogsViewerScreen extends ConsumerStatefulWidget {
+  const LogsViewerScreen({super.key});
+
+  @override
+  ConsumerState<LogsViewerScreen> createState() => _LogsViewerScreenState();
+}
+
+class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
+  final LoggerService _logger = LoggerService();
+  final ScrollController _scrollController = ScrollController();
+  String _logs = '';
+  bool _showErrorLogsOnly = false;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLogs();
+  }
+
+  Future<void> _loadLogs() async {
+    setState(() => _isLoading = true);
+    final logs = await _logger.getLogs(errorLogsOnly: _showErrorLogsOnly);
+    if (mounted) {
+      setState(() {
+        _logs = logs;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _shareLogs() async {
+    try {
+      await _logger.shareLogs();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to share logs: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearLogs() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear Logs'),
+        content: const Text('Are you sure you want to clear all logs?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _logger.clearLogs(errorLogsOnly: _showErrorLogsOnly);
+      await _loadLogs();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('App Logs'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: _shareLogs,
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: _clearLogs,
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadLogs,
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                const Text('Show Error Logs Only'),
+                const SizedBox(width: 8),
+                Switch(
+                  value: _showErrorLogsOnly,
+                  onPressed: _isLoading
+                      ? null
+                      : (value) {
+                          setState(() => _showErrorLogsOnly = value);
+                          _loadLogs();
+                        },
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    child: SelectableText(
+                      _logs,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                FloatingActionButton(
+                  mini: true,
+                  onPressed: () {
+                    _scrollController.animateTo(
+                      0,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  },
+                  child: const Icon(Icons.arrow_upward),
+                ),
+                const SizedBox(width: 8),
+                FloatingActionButton(
+                  mini: true,
+                  onPressed: () {
+                    _scrollController.animateTo(
+                      _scrollController.position.maxScrollExtent,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  },
+                  child: const Icon(Icons.arrow_downward),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+```
+
 FILE: \lib\features\settings\presentation\screens\offline_management_screen.dart
 ```dart
 import 'package:flutter/material.dart';
@@ -6031,12 +6213,13 @@ class UserModel {
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'email': email,
       'displayName': displayName,
       'isGuest': isGuest,
       'isEmailVerified': isEmailVerified,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'lastLoginAt': Timestamp.fromDate(lastLoginAt),
+      'createdAt': createdAt.toIso8601String(),
+      'lastLoginAt': lastLoginAt.toIso8601String(),
     };
   }
 
@@ -6045,20 +6228,20 @@ class UserModel {
   }
 
   factory UserModel.fromJson(String jsonString) {
-    final Map<String, dynamic> data = json.decode(jsonString);
-    return UserModel(
-      id: data['id'] as String,
-      email: data['email'] as String?,
-      displayName: data['displayName'] as String?,
-      isGuest: data['isGuest'] as bool,
-      isEmailVerified: data['isEmailVerified'] as bool? ?? false,
-      createdAt: data['createdAt'] != null
-          ? DateTime.parse(data['createdAt'] as String)
-          : DateTime.now(),
-      lastLoginAt: data['lastLoginAt'] != null
-          ? DateTime.parse(data['lastLoginAt'] as String)
-          : DateTime.now(),
-    );
+    try {
+      final Map<String, dynamic> data = json.decode(jsonString);
+      return UserModel(
+        id: data['id'] as String,
+        email: data['email'] as String?,
+        displayName: data['displayName'] as String?,
+        isGuest: data['isGuest'] as bool? ?? false,
+        isEmailVerified: data['isEmailVerified'] as bool? ?? false,
+        createdAt: DateTime.parse(data['createdAt'] as String),
+        lastLoginAt: DateTime.parse(data['lastLoginAt'] as String),
+      );
+    } catch (e) {
+      throw FormatException('Failed to parse UserModel from JSON: $e');
+    }
   }
 
   UserModel copyWith({
@@ -6259,7 +6442,7 @@ dependencies {
     implementation 'com.google.android.gms:play-services-auth:20.7.0'
     implementation 'com.google.firebase:firebase-appcheck-playintegrity'
     debugImplementation 'com.google.firebase:firebase-appcheck-debug:17.1.1'  // For debug builds only
-    implementation 'androidx.multidex:multidex:2.0.1'
+    implementation 'androidx.multidex:multidex:2.0.1'    
 }
 ```
 
@@ -6342,7 +6525,7 @@ FILE: \android\app\src\main\AndroidManifest.xml
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     
     <application
@@ -6464,6 +6647,11 @@ gradle.version=8.2
 
 FILE: \android\.gradle\vcs-1\gc.properties
 ```properties
+```
+
+FILE: \android\app\app.properties
+```properties
+appAuthRedirectScheme=com.mrw1986.fftcg_companion_app
 ```
 
 FILE: \android\gradle\wrapper\gradle-wrapper.properties
@@ -6682,9 +6870,7 @@ dependencies:
   flutter_staggered_grid_view: ^0.7.0
   json_annotation: ^4.8.1
   freezed_annotation: ^2.4.1
-  logging: ^1.2.0
-  firebase_auth: ^4.15.3
-  google_sign_in: ^6.1.6
+  logging: ^1.2.0    
   path_provider: ^2.1.1
   share_plus: ^7.2.1
   shared_preferences: ^2.2.2
@@ -6694,6 +6880,9 @@ dependencies:
   internet_connection_checker: ^1.0.0+1
   firebase_crashlytics: ^3.4.8
   device_info_plus: ^9.1.1
+  google_api_availability: 5.0.0
+  google_sign_in: ^5.4.2
+  firebase_auth: ^4.15.3
   
 
 dev_dependencies:

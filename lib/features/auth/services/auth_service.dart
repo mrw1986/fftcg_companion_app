@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import '../../../core/logging/logger_service.dart';
 import '../../../models/user_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 
 class AuthService {
   final FirebaseAuth _auth;
@@ -17,8 +18,7 @@ class AuthService {
   final LoggerService _logger;
 
   static const String _guestPrefsKey = 'guest_session';
-  static const int _maxRetries = 3;
-  static const Duration _retryDelay = Duration(seconds: 2);
+  static const Duration _timeout = Duration(seconds: 30);
 
   AuthService({
     FirebaseAuth? auth,
@@ -26,11 +26,17 @@ class AuthService {
     FirebaseFirestore? firestore,
     LoggerService? logger,
   })  : _auth = auth ?? FirebaseAuth.instance,
-        _googleSignIn = googleSignIn ?? GoogleSignIn(),
+        _googleSignIn = googleSignIn ??
+            GoogleSignIn(
+              scopes: ['email', 'profile'],
+              signInOption: SignInOption.standard,
+              hostedDomain: '', // Allow any domain
+            ),
         _firestore = firestore ?? FirebaseFirestore.instance,
         _logger = logger ?? LoggerService();
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
+  User? get currentUser => _auth.currentUser;
 
   Future<UserModel?> getCurrentUser() async {
     try {
@@ -60,58 +66,83 @@ class AuthService {
     try {
       await _verifyConnectivityAndAppCheck();
 
-      final GoogleSignInAccount? googleUser = await _retryOperation(
-        () => _googleSignIn.signIn(),
-      );
+      // Sign out of any existing sessions first
+      await _googleSignIn.signOut();
+
+      // Begin interactive sign in process with timeout
+      final GoogleSignInAccount? googleUser =
+          await _googleSignIn.signIn().timeout(_timeout, onTimeout: () {
+        throw CustomAuthException(
+          code: 'timeout',
+          message: 'Sign in process timed out. Please try again.',
+        );
+      });
 
       if (googleUser == null) {
         _logger.warning('Google sign in cancelled by user');
         return null;
       }
 
+      // Get authentication details
       final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-
-      if (googleAuth.accessToken == null || googleAuth.idToken == null) {
+          await googleUser.authentication.timeout(_timeout, onTimeout: () {
         throw CustomAuthException(
-          code: 'google-signin-failed',
-          message: 'Failed to get Google authentication tokens',
+          code: 'auth-timeout',
+          message: 'Authentication process timed out. Please try again.',
         );
-      }
+      });
 
-      final credential = GoogleAuthProvider.credential(
+      // Create Firebase credential
+      final OAuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      final UserCredential userCredential = await _retryOperation(
-        () => _auth.signInWithCredential(credential),
-      );
-
-      if (userCredential.user == null) {
+      // Sign in to Firebase
+      final UserCredential userCredential = await _auth
+          .signInWithCredential(credential)
+          .timeout(_timeout, onTimeout: () {
         throw CustomAuthException(
-          code: 'google-signin-failed',
-          message: 'Failed to sign in with Google: No user returned',
+          code: 'firebase-timeout',
+          message: 'Firebase authentication timed out. Please try again.',
+        );
+      });
+
+      final user = userCredential.user;
+      if (user == null) {
+        throw CustomAuthException(
+          code: 'null-user',
+          message: 'Failed to get user details from Firebase',
         );
       }
 
       // Clear any existing guest session
       await _clearGuestSession();
 
-      return await _createOrUpdateUser(userCredential.user!);
-    } on FirebaseAuthException catch (e, stackTrace) {
-      _logger.error('Firebase Auth Error signing in with Google: ${e.message}',
-          e, stackTrace);
-      throw CustomAuthException(
-        code: e.code,
-        message: _getReadableAuthError(e.code),
-      );
+      // Create or update user document
+      return await _createOrUpdateUser(user);
     } catch (e, stackTrace) {
       _logger.error('Error signing in with Google', e, stackTrace);
-      throw CustomAuthException(
-        code: 'unknown',
-        message: 'Failed to sign in with Google: ${e.toString()}',
-      );
+
+      if (e is FirebaseAuthException) {
+        throw CustomAuthException(
+          code: e.code,
+          message: _getReadableAuthError(e.code),
+        );
+      } else if (e is TimeoutException) {
+        throw CustomAuthException(
+          code: 'timeout',
+          message:
+              'Operation timed out. Please check your connection and try again.',
+        );
+      } else if (e is CustomAuthException) {
+        rethrow;
+      } else {
+        throw CustomAuthException(
+          code: 'unknown',
+          message: 'Failed to sign in with Google: ${e.toString()}',
+        );
+      }
     }
   }
 
@@ -120,27 +151,25 @@ class AuthService {
     try {
       await _verifyConnectivityAndAppCheck();
 
-      final UserCredential userCredential = await _retryOperation(
-        () => _auth.signInWithEmailAndPassword(
-          email: email.trim(),
-          password: password,
-        ),
-      );
+      final userCredential = await _auth
+          .signInWithEmailAndPassword(
+            email: email.trim(),
+            password: password,
+          )
+          .timeout(_timeout);
 
-      if (userCredential.user == null) {
+      final user = userCredential.user;
+      if (user == null) {
         throw CustomAuthException(
-          code: 'email-signin-failed',
-          message: 'Failed to sign in with email: No user returned',
+          code: 'null-user',
+          message: 'Failed to get user details from Firebase',
         );
       }
 
-      // Clear any existing guest session
       await _clearGuestSession();
-
-      return await _createOrUpdateUser(userCredential.user!);
+      return await _createOrUpdateUser(user);
     } on FirebaseAuthException catch (e, stackTrace) {
-      _logger.error('Firebase Auth Error signing in with email: ${e.message}',
-          e, stackTrace);
+      _logger.error('Firebase Auth Error: ${e.message}', e, stackTrace);
       throw CustomAuthException(
         code: e.code,
         message: _getReadableAuthError(e.code),
@@ -149,7 +178,7 @@ class AuthService {
       _logger.error('Error signing in with email/password', e, stackTrace);
       throw CustomAuthException(
         code: 'unknown',
-        message: 'Failed to sign in with email: ${e.toString()}',
+        message: 'Authentication failed: ${e.toString()}',
       );
     }
   }
@@ -158,7 +187,6 @@ class AuthService {
     try {
       _logger.info('Creating guest session');
 
-      // Create a guest user with a unique ID
       final guestUser = UserModel(
         id: 'guest_${DateTime.now().millisecondsSinceEpoch}',
         displayName: 'Guest User',
@@ -167,17 +195,15 @@ class AuthService {
         lastLoginAt: DateTime.now(),
       );
 
-      // Store guest user data in SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       final guestDataJson = guestUser.toJson();
-
       _logger.info('Saving guest data: $guestDataJson');
 
       final result = await prefs.setString(_guestPrefsKey, guestDataJson);
       if (!result) {
         throw CustomAuthException(
           code: 'guest-session-save-failed',
-          message: 'Failed to save guest session to preferences',
+          message: 'Failed to save guest session',
         );
       }
 
@@ -216,30 +242,28 @@ class AuthService {
     try {
       await _verifyConnectivityAndAppCheck();
 
-      final UserCredential userCredential = await _retryOperation(
-        () => _auth.createUserWithEmailAndPassword(
-          email: email.trim(),
-          password: password,
-        ),
-      );
+      final userCredential = await _auth
+          .createUserWithEmailAndPassword(
+            email: email.trim(),
+            password: password,
+          )
+          .timeout(_timeout);
 
-      if (userCredential.user == null) {
+      final user = userCredential.user;
+      if (user == null) {
         throw CustomAuthException(
-          code: 'registration-failed',
-          message: 'Failed to create account: No user returned',
+          code: 'null-user',
+          message: 'Failed to create user account',
         );
       }
 
-      await userCredential.user?.updateDisplayName(displayName.trim());
-      await userCredential.user?.sendEmailVerification();
-
-      // Clear any existing guest session
+      await user.updateDisplayName(displayName.trim());
+      await user.sendEmailVerification();
       await _clearGuestSession();
 
-      return await _createOrUpdateUser(userCredential.user!);
+      return await _createOrUpdateUser(user);
     } on FirebaseAuthException catch (e, stackTrace) {
-      _logger.error(
-          'Firebase Auth Error registering user: ${e.message}', e, stackTrace);
+      _logger.error('Firebase Auth Error: ${e.message}', e, stackTrace);
       throw CustomAuthException(
         code: e.code,
         message: _getReadableAuthError(e.code),
@@ -248,21 +272,19 @@ class AuthService {
       _logger.error('Error registering with email/password', e, stackTrace);
       throw CustomAuthException(
         code: 'unknown',
-        message: 'Failed to create account: ${e.toString()}',
+        message: 'Registration failed: ${e.toString()}',
       );
     }
   }
 
   Future<void> signOut() async {
     try {
-      // Check if we're in a guest session
       if (await isGuestSession()) {
         await _clearGuestSession();
         _logger.info('Guest session cleared');
         return;
       }
 
-      // Regular sign out process
       await Future.wait([
         _auth.signOut(),
         _googleSignIn.signOut(),
@@ -277,13 +299,14 @@ class AuthService {
   Future<UserModel> _createOrUpdateUser(User user) async {
     final userDoc = _firestore.collection('users').doc(user.uid);
 
-    final UserModel userData = UserModel(
+    final userData = UserModel(
       id: user.uid,
       email: user.email,
       displayName: user.displayName ?? 'User ${user.uid.substring(0, 4)}',
       isGuest: false,
       isEmailVerified: user.emailVerified,
       lastLoginAt: DateTime.now(),
+      createdAt: DateTime.now(),
     );
 
     try {
@@ -315,7 +338,7 @@ class AuthService {
     try {
       final user = _auth.currentUser;
       if (user != null && !user.emailVerified) {
-        await _retryOperation(() => user.sendEmailVerification());
+        await user.sendEmailVerification().timeout(_timeout);
         _logger.info('Verification email sent to ${user.email}');
       }
     } catch (e, stackTrace) {
@@ -328,7 +351,7 @@ class AuthService {
     try {
       final user = _auth.currentUser;
       if (user != null) {
-        await _retryOperation(() => user.reload());
+        await user.reload().timeout(_timeout);
         _logger.info('Email verification status: ${user.emailVerified}');
       }
     } catch (e, stackTrace) {
@@ -338,9 +361,7 @@ class AuthService {
   }
 
   Future<void> _verifyConnectivityAndAppCheck() async {
-    final List<ConnectivityResult> connectivityResult =
-        await Connectivity().checkConnectivity();
-
+    final connectivityResult = await Connectivity().checkConnectivity();
     if (connectivityResult.contains(ConnectivityResult.none)) {
       throw CustomAuthException(
         code: 'no-connection',
@@ -350,7 +371,8 @@ class AuthService {
 
     if (!kDebugMode) {
       try {
-        final token = await FirebaseAppCheck.instance.getToken(true);
+        final token =
+            await FirebaseAppCheck.instance.getToken(true).timeout(_timeout);
         if (token == null) {
           throw CustomAuthException(
             code: 'app-check-failed',
@@ -365,25 +387,6 @@ class AuthService {
         );
       }
     }
-  }
-
-  Future<T> _retryOperation<T>(Future<T> Function() operation) async {
-    int attempts = 0;
-    while (attempts < _maxRetries) {
-      try {
-        return await operation();
-      } catch (e) {
-        attempts++;
-        if (attempts >= _maxRetries) rethrow;
-        await Future.delayed(_retryDelay);
-        _logger.warning(
-            'Retry attempt $attempts for operation after error: ${e.toString()}');
-      }
-    }
-    throw CustomAuthException(
-      code: 'retry-failed',
-      message: 'Operation failed after $_maxRetries attempts',
-    );
   }
 
   String _getReadableAuthError(String code) {
@@ -406,6 +409,8 @@ class AuthService {
         return 'Network error. Please check your connection';
       case 'too-many-requests':
         return 'Too many attempts. Please try again later';
+      case 'timeout':
+        return 'Operation timed out. Please try again';
       case 'app-check-failed':
         return 'App verification failed. Please ensure you\'re using an official version';
       case 'no-connection':

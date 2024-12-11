@@ -21,9 +21,7 @@ dependencies:
   flutter_staggered_grid_view: ^0.7.0
   json_annotation: ^4.8.1
   freezed_annotation: ^2.4.1
-  logging: ^1.2.0
-  firebase_auth: ^4.15.3
-  google_sign_in: ^6.1.6
+  logging: ^1.2.0    
   path_provider: ^2.1.1
   share_plus: ^7.2.1
   shared_preferences: ^2.2.2
@@ -34,6 +32,8 @@ dependencies:
   firebase_crashlytics: ^3.4.8
   device_info_plus: ^9.1.1
   google_api_availability: 5.0.0
+  google_sign_in: ^5.4.2
+  firebase_auth: ^4.15.3
   
 
 dev_dependencies:
