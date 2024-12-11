@@ -29,6 +29,16 @@ class AuthRepository {
   Stream<UserModel?> get authStateChanges => _authService.authStateChanges
       .asyncMap((user) => user != null ? _authService.getCurrentUser() : null);
 
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _authService.sendPasswordResetEmail(email);
+    } catch (e, stackTrace) {
+      _logger.error(
+          'Error sending password reset email in repository', e, stackTrace);
+      rethrow;
+    }
+  }
+  
   Future<UserModel?> getCurrentUser() async {
     try {
       // Check for guest session first

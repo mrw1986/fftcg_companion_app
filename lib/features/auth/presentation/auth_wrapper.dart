@@ -22,7 +22,11 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   void initState() {
     super.initState();
     _logger.info('AuthWrapper initialized');
-    _startEmailVerificationCheck();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _startEmailVerificationCheck();
+      }
+    });
   }
 
   void _startEmailVerificationCheck() {

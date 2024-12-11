@@ -24,13 +24,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _logger = LoggerService();
 
   @override
+  void initState() {
+    super.initState();
+    // Use addPostFrameCallback to modify state after build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(authNotifierProvider.notifier).clearError();
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  // In LoginScreen
   Future<void> _handleEmailLogin() async {
     if (_formKey.currentState?.validate() ?? false) {
       try {
@@ -41,9 +51,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             );
       } catch (e, stackTrace) {
         _logger.error('Email login failed', e, stackTrace);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString())),
+          );
+        }
       }
     }
   }
@@ -54,6 +66,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref.read(authNotifierProvider.notifier).signInWithGoogle();
     } catch (e, stackTrace) {
       _logger.error('Google sign-in failed', e, stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
     }
   }
 
@@ -63,29 +80,82 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref.read(authNotifierProvider.notifier).signInAsGuest();
     } catch (e, stackTrace) {
       _logger.error('Guest login failed', e, stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
     }
   }
 
-  Future<void> _handlePasswordReset() async {
-    if (_emailController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter your email address'),
-        ),
-      );
-      return;
-    }
+  Future<void> _showPasswordResetDialog() async {
+    final TextEditingController emailController = TextEditingController(
+      text: _emailController.text, // Pre-fill with email if entered
+    );
 
+    final bool? result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Enter your email address and we\'ll send you a link to reset your password.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Send Reset Link'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      await _handlePasswordReset(emailController.text);
+    }
+  }
+
+  Future<void> _handlePasswordReset(String email) async {
     try {
-      _logger.info('Attempting password reset for: ${_emailController.text}');
-      await FirebaseAuth.instance.sendPasswordResetEmail(
-        email: _emailController.text.trim(),
-      );
+      _logger.info('Attempting password reset for: $email');
+      await ref
+          .read(authNotifierProvider.notifier)
+          .sendPasswordResetEmail(email);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Password reset email sent'),
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Reset Link Sent'),
+            content: const Text(
+              'If an account exists with this email address, '
+              'you will receive a password reset link shortly.\n\n'
+              'Please check your email and follow the instructions '
+              'to reset your password.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
           ),
         );
       }
@@ -93,12 +163,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _logger.error('Password reset failed', e, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to send password reset email'),
+          SnackBar(
+            content: Text(_getPasswordResetErrorMessage(e)),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
     }
+  }
+
+  String _getPasswordResetErrorMessage(dynamic error) {
+    if (error is FirebaseAuthException) {
+      switch (error.code) {
+        case 'invalid-email':
+          return 'The email address is invalid';
+        case 'user-not-found':
+          return 'If an account exists, you will receive an email shortly';
+        case 'too-many-requests':
+          return 'Too many attempts. Please try again later';
+        default:
+          return 'Failed to send reset email. Please try again';
+      }
+    }
+    return 'An error occurred. Please try again';
+  }
+
+  void _navigateToRegistration() {
+    // Clear any existing errors before navigating
+    ref.read(authNotifierProvider.notifier).clearError();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const RegistrationScreen(),
+      ),
+    );
   }
 
   @override
@@ -154,7 +251,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: _handlePasswordReset,
+                      onPressed: _showPasswordResetDialog,
                       child: const Text('Forgot Password?'),
                     ),
                   ),
@@ -163,26 +260,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     AuthErrorWidget(
                       message: authState.errorMessage!,
                     ),
-                  // In LoginScreen
                   AuthButton(
-                    text: 'Sign In', // Changed from 'Login'
+                    text: 'Sign In',
                     onPressed: _handleEmailLogin,
                     isLoading: authState.status == AuthStatus.loading,
                   ),
                   const SizedBox(height: 16),
-                  const Text('Or'),
-                  const SizedBox(height: 16),
-                  AuthButton(
-                    text: 'Create New Account',
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const RegistrationScreen(),
-                        ),
-                      );
-                    },
-                    isOutlined: true,
+                  const Text(
+                    'Or',
+                    textAlign: TextAlign.center,
                   ),
+                  const SizedBox(height: 16),
                   AuthButton(
                     text: 'Continue with Google',
                     onPressed: _handleGoogleLogin,
@@ -195,15 +283,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     isLoading: authState.status == AuthStatus.loading,
                     isOutlined: true,
                   ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const RegistrationScreen(),
-                        ),
-                      );
-                    },
-                    child: const Text('Create an Account'),
+                  AuthButton(
+                    text: 'Create New Account',
+                    onPressed: _navigateToRegistration,
+                    isOutlined: true,
                   ),
                   // After your other buttons
                   IconButton(

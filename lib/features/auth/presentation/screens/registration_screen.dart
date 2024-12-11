@@ -23,6 +23,16 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
   final _logger = LoggerService();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(authNotifierProvider.notifier).clearError();
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _displayNameController.dispose();
     _emailController.dispose();
@@ -40,6 +50,33 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
               _passwordController.text,
               _displayNameController.text.trim(),
             );
+
+        if (mounted) {
+          // Clear any existing error state
+          ref.read(authNotifierProvider.notifier).clearError();
+
+          // Show success dialog
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('Account Created'),
+              content: const Text(
+                'Your account has been created successfully. Please check your email '
+                'to verify your account before signing in.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context); // Close dialog
+                    Navigator.pop(context); // Return to login screen
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
       } catch (e, stackTrace) {
         _logger.error('Registration failed', e, stackTrace);
       }

@@ -61,6 +61,26 @@ class AuthService {
     }
   }
 
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(
+        email: email.trim(),
+        actionCodeSettings: ActionCodeSettings(
+          url:
+              'https://fftcg-sync-service.firebaseapp.com/__/auth/action', // Your Firebase hosting URL
+          handleCodeInApp: true,
+          androidPackageName: 'com.mrw1986.fftcg_companion_app',
+          androidInstallApp: true,
+          androidMinimumVersion: '23',
+        ),
+      );
+      _logger.info('Password reset email sent successfully');
+    } catch (e, stackTrace) {
+      _logger.error('Error sending password reset email', e, stackTrace);
+      rethrow;
+    }
+  }
+
   Future<UserModel?> signInWithGoogle() async {
     try {
       await _verifyConnectivityAndAppCheck();
