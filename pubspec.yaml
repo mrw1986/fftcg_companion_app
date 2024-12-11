@@ -33,6 +33,7 @@ dependencies:
   internet_connection_checker: ^1.0.0+1
   firebase_crashlytics: ^3.4.8
   device_info_plus: ^9.1.1
+  google_api_availability: 5.0.0
   
 
 dev_dependencies:

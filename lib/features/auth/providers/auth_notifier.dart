@@ -22,62 +22,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   void _initialize() {
-    _logger.info('Initializing AuthNotifier');
     _authStateSubscription?.cancel();
     _authStateSubscription = _authRepository.authStateChanges.listen(
       (user) async {
-        try {
-          if (user != null) {
-            // Check if it's a guest user
-            if (user.isGuest) {
-              _logger.info('Guest user session detected');
-              state = state.copyWith(
-                status: AuthStatus.guest,
-                user: user,
-                errorMessage: null,
-              );
-            } else {
-              _logger.info('Authenticated user session detected');
-              state = state.copyWith(
-                status: AuthStatus.authenticated,
-                user: user,
-                errorMessage: null,
-              );
-            }
-          } else {
-            // Check if we have a guest session
-            final isGuest = await _authRepository.isGuestSession();
-            if (isGuest) {
-              _logger.info('Restoring guest session');
-              final guestUser = await _authRepository.getCurrentUser();
-              state = state.copyWith(
-                status: AuthStatus.guest,
-                user: guestUser,
-                errorMessage: null,
-              );
-            } else {
-              _logger.info('No active session detected');
-              state = state.copyWith(
-                status: AuthStatus.unauthenticated,
-                user: null,
-                errorMessage: null,
-              );
-            }
-          }
-        } catch (e, stackTrace) {
-          _logger.error('Error in auth state change handler', e, stackTrace);
-          state = state.copyWith(
-            status: AuthStatus.error,
-            errorMessage: 'Failed to process authentication state',
-          );
+        if (user != null && user.isGuest) {
+          state = state.copyWith(status: AuthStatus.guest, user: user);
+        } else if (user != null) {
+          state = state.copyWith(status: AuthStatus.authenticated, user: user);
+        } else {
+          state =
+              state.copyWith(status: AuthStatus.unauthenticated, user: null);
         }
       },
       onError: (error, stackTrace) {
-        _logger.error('Auth state stream error', error, stackTrace);
         state = state.copyWith(
-          status: AuthStatus.error,
-          errorMessage: 'Authentication error occurred',
-        );
+            status: AuthStatus.error, errorMessage: error.toString());
       },
     );
   }
@@ -150,7 +109,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.info('Attempting guest sign in');
 
       final guestUser = await _authRepository.signInAsGuest();
-
       if (guestUser != null) {
         state = state.copyWith(
           status: AuthStatus.guest,

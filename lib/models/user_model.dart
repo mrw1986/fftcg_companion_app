@@ -36,12 +36,13 @@ class UserModel {
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'email': email,
       'displayName': displayName,
       'isGuest': isGuest,
       'isEmailVerified': isEmailVerified,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'lastLoginAt': Timestamp.fromDate(lastLoginAt),
+      'createdAt': createdAt.toIso8601String(),
+      'lastLoginAt': lastLoginAt.toIso8601String(),
     };
   }
 
@@ -50,20 +51,20 @@ class UserModel {
   }
 
   factory UserModel.fromJson(String jsonString) {
-    final Map<String, dynamic> data = json.decode(jsonString);
-    return UserModel(
-      id: data['id'] as String,
-      email: data['email'] as String?,
-      displayName: data['displayName'] as String?,
-      isGuest: data['isGuest'] as bool,
-      isEmailVerified: data['isEmailVerified'] as bool? ?? false,
-      createdAt: data['createdAt'] != null
-          ? DateTime.parse(data['createdAt'] as String)
-          : DateTime.now(),
-      lastLoginAt: data['lastLoginAt'] != null
-          ? DateTime.parse(data['lastLoginAt'] as String)
-          : DateTime.now(),
-    );
+    try {
+      final Map<String, dynamic> data = json.decode(jsonString);
+      return UserModel(
+        id: data['id'] as String,
+        email: data['email'] as String?,
+        displayName: data['displayName'] as String?,
+        isGuest: data['isGuest'] as bool? ?? false,
+        isEmailVerified: data['isEmailVerified'] as bool? ?? false,
+        createdAt: DateTime.parse(data['createdAt'] as String),
+        lastLoginAt: DateTime.parse(data['lastLoginAt'] as String),
+      );
+    } catch (e) {
+      throw FormatException('Failed to parse UserModel from JSON: $e');
+    }
   }
 
   UserModel copyWith({

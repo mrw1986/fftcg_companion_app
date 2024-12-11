@@ -167,18 +167,25 @@ class AuthService {
         lastLoginAt: DateTime.now(),
       );
 
-      // Store guest user data
+      // Store guest user data in SharedPreferences
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_guestPrefsKey, guestUser.toJson());
+      final guestDataJson = guestUser.toJson();
+
+      _logger.info('Saving guest data: $guestDataJson');
+
+      final result = await prefs.setString(_guestPrefsKey, guestDataJson);
+      if (!result) {
+        throw CustomAuthException(
+          code: 'guest-session-save-failed',
+          message: 'Failed to save guest session to preferences',
+        );
+      }
 
       _logger.info('Guest session created successfully');
       return guestUser;
     } catch (e, stackTrace) {
       _logger.error('Error creating guest session', e, stackTrace);
-      throw CustomAuthException(
-        code: 'guest-session-failed',
-        message: 'Failed to create guest session: ${e.toString()}',
-      );
+      rethrow;
     }
   }
 
