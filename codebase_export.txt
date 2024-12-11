@@ -1,5 +1,5 @@
 FFTCG Companion App Codebase Export
-Generated: 12/10/2024 23:22:44
+Generated: 12/11/2024 00:17:29
 
 FILE: \lib\firebase_options.dart
 ```dart
@@ -1433,7 +1433,7 @@ import '../widgets/auth_text_field.dart';
 import '../widgets/auth_error_widget.dart';
 import '../../../../core/logging/logger_service.dart';
 import 'registration_screen.dart';
-import '../../features/settings/presentation/screens/logs_viewer_screen.dart';
+import '../../../settings/presentation/screens/logs_viewer_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -2350,9 +2350,8 @@ class AuthService {
   })  : _auth = auth ?? FirebaseAuth.instance,
         _googleSignIn = googleSignIn ??
             GoogleSignIn(
-              scopes: ['email', 'profile'],
+              scopes: ['email'], // Simplified to just email scope
               signInOption: SignInOption.standard,
-              hostedDomain: '', // Allow any domain
             ),
         _firestore = firestore ?? FirebaseFirestore.instance,
         _logger = logger ?? LoggerService();
@@ -2391,14 +2390,8 @@ class AuthService {
       // Sign out of any existing sessions first
       await _googleSignIn.signOut();
 
-      // Begin interactive sign in process with timeout
-      final GoogleSignInAccount? googleUser =
-          await _googleSignIn.signIn().timeout(_timeout, onTimeout: () {
-        throw CustomAuthException(
-          code: 'timeout',
-          message: 'Sign in process timed out. Please try again.',
-        );
-      });
+      // Begin interactive sign in process
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
       if (googleUser == null) {
         _logger.warning('Google sign in cancelled by user');
@@ -2407,30 +2400,18 @@ class AuthService {
 
       // Get authentication details
       final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication.timeout(_timeout, onTimeout: () {
-        throw CustomAuthException(
-          code: 'auth-timeout',
-          message: 'Authentication process timed out. Please try again.',
-        );
-      });
+          await googleUser.authentication;
 
       // Create Firebase credential
-      final OAuthCredential credential = GoogleAuthProvider.credential(
+      final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
       // Sign in to Firebase
-      final UserCredential userCredential = await _auth
-          .signInWithCredential(credential)
-          .timeout(_timeout, onTimeout: () {
-        throw CustomAuthException(
-          code: 'firebase-timeout',
-          message: 'Firebase authentication timed out. Please try again.',
-        );
-      });
-
+      final userCredential = await _auth.signInWithCredential(credential);
       final user = userCredential.user;
+
       if (user == null) {
         throw CustomAuthException(
           code: 'null-user',
@@ -2450,12 +2431,6 @@ class AuthService {
         throw CustomAuthException(
           code: e.code,
           message: _getReadableAuthError(e.code),
-        );
-      } else if (e is TimeoutException) {
-        throw CustomAuthException(
-          code: 'timeout',
-          message:
-              'Operation timed out. Please check your connection and try again.',
         );
       } else if (e is CustomAuthException) {
         rethrow;
@@ -5544,6 +5519,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/logging/logger_service.dart';
 import 'package:share_plus/share_plus.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
 class LogsViewerScreen extends ConsumerStatefulWidget {
   const LogsViewerScreen({super.key});
@@ -5578,7 +5555,15 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
 
   Future<void> _shareLogs() async {
     try {
-      await _logger.shareLogs();
+      final logs = await _logger.getLogs(errorLogsOnly: _showErrorLogsOnly);
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/fftcg_companion_logs.txt');
+      await file.writeAsString(logs);
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'FFTCG Companion Logs',
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -5643,7 +5628,7 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
                 const SizedBox(width: 8),
                 Switch(
                   value: _showErrorLogsOnly,
-                  onPressed: _isLoading
+                  onChanged: _isLoading
                       ? null
                       : (value) {
                           setState(() => _showErrorLogsOnly = value);
@@ -6206,8 +6191,16 @@ class UserModel {
       displayName: data['displayName'],
       isGuest: data['isGuest'] ?? false,
       isEmailVerified: data['isEmailVerified'] ?? false,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      lastLoginAt: (data['lastLoginAt'] as Timestamp).toDate(),
+      createdAt: data['createdAt'] is Timestamp
+          ? (data['createdAt'] as Timestamp).toDate()
+          : data['createdAt'] is String
+              ? DateTime.parse(data['createdAt'])
+              : DateTime.now(),
+      lastLoginAt: data['lastLoginAt'] is Timestamp
+          ? (data['lastLoginAt'] as Timestamp).toDate()
+          : data['lastLoginAt'] is String
+              ? DateTime.parse(data['lastLoginAt'])
+              : DateTime.now(),
     );
   }
 
@@ -6218,8 +6211,8 @@ class UserModel {
       'displayName': displayName,
       'isGuest': isGuest,
       'isEmailVerified': isEmailVerified,
-      'createdAt': createdAt.toIso8601String(),
-      'lastLoginAt': lastLoginAt.toIso8601String(),
+      'createdAt': Timestamp.fromDate(createdAt),
+      'lastLoginAt': Timestamp.fromDate(lastLoginAt),
     };
   }
 
@@ -6392,18 +6385,18 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.mrw1986.fftcg_companion_app"
-        minSdkVersion 21
-        targetSdkVersion 34
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
-        multiDexEnabled true
-        
-        manifestPlaceholders = [
-            'applicationName': "io.flutter.app.FlutterApplication",
-            'appAuthRedirectScheme': 'com.mrw1986.fftcg_companion_app'
-        ]
-    }
+    applicationId "com.mrw1986.fftcg_companion_app"
+    minSdkVersion 23  // Changed from 21 to 23
+    targetSdkVersion 34
+    versionCode flutterVersionCode.toInteger()
+    versionName flutterVersionName
+    multiDexEnabled true
+    
+    manifestPlaceholders = [
+        'applicationName': "io.flutter.app.FlutterApplication",
+        'appAuthRedirectScheme': 'com.mrw1986.fftcg_companion_app'
+    ]
+}
 
     buildTypes {
         release {
@@ -6858,9 +6851,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  firebase_core: ^2.24.2
-  cloud_firestore: ^4.13.6
-  firebase_storage: ^11.5.6
+  firebase_core: ^3.8.1
+  cloud_firestore: ^5.5.1
+  firebase_storage: ^12.3.7
   cached_network_image: ^3.3.0
   hive: ^2.2.3
   hive_flutter: ^1.1.0
@@ -6873,16 +6866,16 @@ dependencies:
   logging: ^1.2.0    
   path_provider: ^2.1.1
   share_plus: ^7.2.1
-  shared_preferences: ^2.2.2
-  firebase_app_check: ^0.2.2
+  shared_preferences: ^2.3.3
+  firebase_app_check: 0.3.1+7
   connectivity_plus: ^6.1.0
   flutter_launcher_icons: ^0.14.2
   internet_connection_checker: ^1.0.0+1
-  firebase_crashlytics: ^3.4.8
+  firebase_crashlytics: ^4.2.0
   device_info_plus: ^9.1.1
   google_api_availability: 5.0.0
-  google_sign_in: ^5.4.2
-  firebase_auth: ^4.15.3
+  google_sign_in: ^6.2.2
+  firebase_auth: ^5.3.4
   
 
 dev_dependencies:

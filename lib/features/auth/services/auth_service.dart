@@ -367,15 +367,15 @@ class AuthService {
   String _getReadableAuthError(String code) {
     switch (code) {
       case 'user-not-found':
-        return 'No account found with this email address';
+        return 'No account exists with this email. Please create an account first.';
       case 'wrong-password':
-        return 'Incorrect password';
+        return 'Incorrect password. Please try again or use Reset Password.';
       case 'invalid-email':
-        return 'Invalid email address';
+        return 'Please enter a valid email address.';
       case 'user-disabled':
-        return 'This account has been disabled';
+        return 'This account has been disabled.';
       case 'email-already-in-use':
-        return 'An account already exists with this email';
+        return 'An account already exists with this email. Please sign in instead.';
       case 'operation-not-allowed':
         return 'This operation is not allowed';
       case 'weak-password':

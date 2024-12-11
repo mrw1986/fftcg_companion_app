@@ -8,7 +8,9 @@ import '../widgets/filter_bottom_sheet.dart';
 import '../widgets/sort_menu_button.dart';
 import '../widgets/search_bar_widget.dart';
 import '../../../../core/logging/logger_service.dart';
-import '../../providers/card_state.dart'; // Add this import
+import '../../providers/card_state.dart';
+import '../../../auth/providers/auth_providers.dart';
+import '../../../settings/presentation/screens/offline_management_screen.dart';
 
 class CardsScreen extends ConsumerStatefulWidget {
   const CardsScreen({super.key});
@@ -50,9 +52,34 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
     );
   }
 
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await ref.read(authNotifierProvider.notifier).signOut();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cardState = ref.watch(cardNotifierProvider);
+    final user = ref.watch(currentUserProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -69,10 +96,62 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
             icon: const Icon(Icons.filter_list),
             onPressed: _showFilterBottomSheet,
           ),
+          PopupMenuButton(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              switch (value) {
+                case 'offline':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const OfflineManagementScreen(),
+                    ),
+                  );
+                  break;
+                case 'logout':
+                  _handleLogout();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'offline',
+                child: Row(
+                  children: [
+                    Icon(Icons.offline_bolt),
+                    SizedBox(width: 8),
+                    Text('Offline Management'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout),
+                    SizedBox(width: 8),
+                    Text('Logout'),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(56),
-          child: CardSearchBar(),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(80),
+          child: Column(
+            children: [
+              const CardSearchBar(),
+              if (user != null && !user.isGuest)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Text(
+                    'Welcome, ${user.displayName ?? 'User'}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
       body: RefreshIndicator(

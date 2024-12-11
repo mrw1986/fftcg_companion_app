@@ -30,6 +30,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  // In LoginScreen
   Future<void> _handleEmailLogin() async {
     if (_formKey.currentState?.validate() ?? false) {
       try {
@@ -40,6 +41,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             );
       } catch (e, stackTrace) {
         _logger.error('Email login failed', e, stackTrace);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
       }
     }
   }
@@ -159,10 +163,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     AuthErrorWidget(
                       message: authState.errorMessage!,
                     ),
+                  // In LoginScreen
                   AuthButton(
-                    text: 'Login',
+                    text: 'Sign In', // Changed from 'Login'
                     onPressed: _handleEmailLogin,
                     isLoading: authState.status == AuthStatus.loading,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Or'),
+                  const SizedBox(height: 16),
+                  AuthButton(
+                    text: 'Create New Account',
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const RegistrationScreen(),
+                        ),
+                      );
+                    },
+                    isOutlined: true,
                   ),
                   AuthButton(
                     text: 'Continue with Google',
