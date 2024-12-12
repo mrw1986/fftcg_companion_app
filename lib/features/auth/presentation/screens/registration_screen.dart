@@ -40,6 +40,29 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
               _passwordController.text,
               _displayNameController.text.trim(),
             );
+
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('Verify Your Email'),
+              content: Text(
+                'A verification email has been sent to ${_emailController.text}.\n\n'
+                'Please check your email and verify your account before signing in.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close dialog
+                    Navigator.of(context).pop(); // Return to login screen
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
       } catch (e, stackTrace) {
         _logger.severe('Registration failed', e, stackTrace);
       }

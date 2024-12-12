@@ -180,6 +180,26 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<bool> isEmailVerified() async {
+    return await _authRepository.isEmailVerified();
+  }
+
+  Future<void> handleEmailVerification(String email) async {
+    try {
+      await _authRepository.sendEmailVerification();
+      state = state.copyWith(
+        status: AuthStatus.unauthenticated,
+        errorMessage: null,
+      );
+    } catch (e, stackTrace) {
+      _logger.severe('Failed to send verification email', e, stackTrace);
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: 'Failed to send verification email. Please try again.',
+      );
+    }
+  }
+
   Future<void> retryInitialization() async {
     _logger.info('Retrying auth initialization');
     state = AuthState();

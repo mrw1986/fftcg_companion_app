@@ -146,7 +146,7 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: Text(
-                    'Welcome, ${user.displayName ?? 'User'}',
+                    'Welcome, ${user.displayName ?? user.email ?? 'User'}',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ),

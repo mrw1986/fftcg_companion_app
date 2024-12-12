@@ -257,6 +257,15 @@ class AuthService {
     }
   }
 
+  Future<bool> isEmailVerified() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      await user.reload(); // Refresh user info
+      return user.emailVerified;
+    }
+    return false;
+  }
+
   Future<void> signOut() async {
     try {
       if (await isGuestSession()) {

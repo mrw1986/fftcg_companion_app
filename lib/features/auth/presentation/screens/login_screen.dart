@@ -32,21 +32,65 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   // In LoginScreen
   Future<void> _handleEmailLogin() async {
+    if (!mounted) return;
     if (_formKey.currentState?.validate() ?? false) {
       try {
         _logger.info('Attempting email login for: ${_emailController.text}');
+
+        // Store email locally for later use
+        final email = _emailController.text.trim();
+        final password = _passwordController.text;
+
+        // Attempt sign in first
         await ref.read(authNotifierProvider.notifier).signInWithEmailPassword(
-              _emailController.text.trim(),
-              _passwordController.text,
+              email,
+              password,
             );
+
+        // Check if still mounted after async operation
+        if (!mounted) return;
+
+        // After successful sign in, check verification status
+        final isVerified =
+            await ref.read(authNotifierProvider.notifier).isEmailVerified();
+
+        if (!mounted) return;
+
+        if (!isVerified) {
+          await _showVerificationDialog(email);
+          // Check mounted again after dialog
+          if (!mounted) return;
+          // Sign out since email isn't verified
+          await ref.read(authNotifierProvider.notifier).signOut();
+        }
       } catch (e, stackTrace) {
         _logger.severe('Email login failed', e, stackTrace);
-        if (mounted) {
-          // Add mounted check
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString())),
-          );
+        if (!mounted) return;
+
+        String errorMessage = 'Login failed';
+
+        if (e is FirebaseAuthException) {
+          switch (e.code) {
+            case 'user-not-found':
+              errorMessage = 'No account exists with this email';
+              break;
+            case 'wrong-password':
+              errorMessage = 'Invalid password';
+              break;
+            case 'invalid-email':
+              errorMessage = 'Invalid email format';
+              break;
+            case 'user-disabled':
+              errorMessage = 'This account has been disabled';
+              break;
+            default:
+              errorMessage = e.message ?? 'Authentication failed';
+          }
         }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage)),
+        );
       }
     }
   }
@@ -121,6 +165,59 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _showVerificationDialog(String email) async {
+    if (!mounted) return;
+
+    return showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Email Not Verified'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Your email ($email) has not been verified. Please check your email for the verification link.',
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Didn\'t receive the email?',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+
+              // Store the ScaffoldMessenger before async gap
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+              await ref
+                  .read(authNotifierProvider.notifier)
+                  .handleEmailVerification(email);
+
+              if (mounted) {
+                scaffoldMessenger.showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'Verification email resent. Please check your inbox.'),
+                  ),
+                );
+              }
+            },
+            child: const Text('Resend Verification Email'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
@@ -183,9 +280,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     AuthErrorWidget(
                       message: authState.errorMessage!,
                     ),
-                  // In LoginScreen
                   AuthButton(
-                    text: 'Sign In', // Changed from 'Login'
+                    text: 'Sign In',
                     onPressed: _handleEmailLogin,
                     isLoading: authState.status == AuthStatus.loading,
                   ),
@@ -215,17 +311,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     isLoading: authState.status == AuthStatus.loading,
                     isOutlined: true,
                   ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const RegistrationScreen(),
-                        ),
-                      );
-                    },
-                    child: const Text('Create an Account'),
-                  ),
-                  // After your other buttons
+                  // Removed duplicate "Create an Account" TextButton
                   IconButton(
                     icon: const Icon(Icons.bug_report),
                     onPressed: () {

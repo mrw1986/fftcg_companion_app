@@ -137,4 +137,8 @@ class AuthRepository {
     }
   }
 
+  Future<bool> isEmailVerified() async {
+    return await _authService.isEmailVerified();
+  }
+
 }
