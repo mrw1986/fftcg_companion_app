@@ -142,20 +142,26 @@ class AuthService {
         );
       }
 
+      // Check email verification status
+      if (!user.emailVerified) {
+        // Update Firestore with verification status
+        await _firestore.collection('users').doc(user.uid).update({
+          'isEmailVerified': false,
+        });
+
+        // Do not proceed with sign in
+        await _auth.signOut();
+        throw CustomAuthException(
+          code: 'email-not-verified',
+          message: 'Please verify your email before signing in',
+        );
+      }
+
       await _clearGuestSession();
       return await _createOrUpdateUser(user);
-    } on FirebaseAuthException catch (e, stackTrace) {
-      _logger.severe('Firebase Auth Error: ${e.message}', e, stackTrace);
-      throw CustomAuthException(
-        code: e.code,
-        message: _getReadableAuthError(e.code),
-      );
     } catch (e, stackTrace) {
       _logger.severe('Error signing in with email/password', e, stackTrace);
-      throw CustomAuthException(
-        code: 'unknown',
-        message: 'Authentication failed: ${e.toString()}',
-      );
+      rethrow;
     }
   }
 
@@ -258,12 +264,47 @@ class AuthService {
   }
 
   Future<bool> isEmailVerified() async {
-    final user = _auth.currentUser;
-    if (user != null) {
-      await user.reload(); // Refresh user info
-      return user.emailVerified;
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return false;
+
+      // Reload user to get latest status
+      await user.reload();
+
+      // Check Firebase Auth verification status
+      if (!user.emailVerified) return false;
+
+      // Also update Firestore
+      await _firestore.collection('users').doc(user.uid).update({
+        'isEmailVerified': true,
+      });
+
+      return true;
+    } catch (e, stackTrace) {
+      _logger.severe('Error checking email verification status', e, stackTrace);
+      return false;
     }
-    return false;
+  }
+
+  Future<void> updateEmailVerificationStatus() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+
+      // Reload the user to get the latest email verification status
+      await user.reload();
+
+      // Update Firestore with the latest verification status
+      await _firestore.collection('users').doc(user.uid).update({
+        'isEmailVerified': user.emailVerified,
+      });
+    } catch (e, stackTrace) {
+      _logger.severe('Error updating email verification status', e, stackTrace);
+      throw CustomAuthException(
+        code: 'verification-update-failed',
+        message: 'Failed to update verification status',
+      );
+    }
   }
 
   Future<void> signOut() async {

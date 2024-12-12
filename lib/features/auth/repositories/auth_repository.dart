@@ -141,4 +141,14 @@ class AuthRepository {
     return await _authService.isEmailVerified();
   }
 
+  Future<void> updateEmailVerificationStatus() async {
+    try {
+      await _authService.updateEmailVerificationStatus();
+    } catch (e, stackTrace) {
+      _logger.severe('Error updating email verification status in repository',
+          e, stackTrace);
+      rethrow;
+    }
+  }
+
 }

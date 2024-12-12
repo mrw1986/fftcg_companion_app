@@ -171,6 +171,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       _logger.info('Checking email verification status');
       await _authRepository.checkEmailVerification();
+      await _authRepository.updateEmailVerificationStatus(); // Add this line
     } catch (e, stackTrace) {
       _logger.severe('Error checking email verification', e, stackTrace);
       state = state.copyWith(
@@ -206,10 +207,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _initialize();
   }
 
-  @override
+    @override
   void dispose() {
     _logger.info('Disposing AuthNotifier');
     _authStateSubscription?.cancel();
     super.dispose();
+  }
+
+  void clearError() {
+    state = state.copyWith(
+      errorMessage: null,
+      status: AuthStatus.unauthenticated,
+    );
   }
 }

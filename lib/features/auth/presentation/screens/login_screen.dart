@@ -34,14 +34,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _handleEmailLogin() async {
     if (!mounted) return;
     if (_formKey.currentState?.validate() ?? false) {
+      // Store scaffoldMessenger outside try block so it's accessible in catch block
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+
       try {
         _logger.info('Attempting email login for: ${_emailController.text}');
 
-        // Store email locally for later use
         final email = _emailController.text.trim();
         final password = _passwordController.text;
 
-        // Attempt sign in first
+        // Attempt sign in
         await ref.read(authNotifierProvider.notifier).signInWithEmailPassword(
               email,
               password,
@@ -58,11 +60,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
         if (!isVerified) {
           await _showVerificationDialog(email);
+
           // Check mounted again after dialog
           if (!mounted) return;
+
           // Sign out since email isn't verified
           await ref.read(authNotifierProvider.notifier).signOut();
+
+          // Use stored scaffoldMessenger
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text('Please verify your email before signing in'),
+            ),
+          );
+          return;
         }
+
+        // Only proceed if email is verified
+        _logger.info('Email verified, proceeding with login');
       } catch (e, stackTrace) {
         _logger.severe('Email login failed', e, stackTrace);
         if (!mounted) return;
@@ -88,7 +103,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           }
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
+        // Use stored scaffoldMessenger
+        scaffoldMessenger.showSnackBar(
           SnackBar(content: Text(errorMessage)),
         );
       }
@@ -291,6 +307,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   AuthButton(
                     text: 'Create New Account',
                     onPressed: () {
+                      ref
+                          .read(authNotifierProvider.notifier)
+                          .clearError(); // Clear error state
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => const RegistrationScreen(),
