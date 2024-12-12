@@ -142,6 +142,8 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 FloatingActionButton(
+                  key: const Key('scroll_up'),
+                  heroTag: 'scroll_up_fab', // Add unique hero tag
                   mini: true,
                   onPressed: () {
                     _scrollController.animateTo(
@@ -154,6 +156,8 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
                 ),
                 const SizedBox(width: 8),
                 FloatingActionButton(
+                  key: const Key('scroll_down'),
+                  heroTag: 'scroll_down_fab', // Add unique hero tag
                   mini: true,
                   onPressed: () {
                     _scrollController.animateTo(

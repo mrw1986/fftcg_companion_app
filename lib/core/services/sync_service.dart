@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../logging/logger_service.dart';
@@ -8,12 +7,14 @@ import '../models/sync_status.dart';
 import 'hive_service.dart';
 import '../../features/cards/models/fftcg_card.dart';
 import '../../features/auth/providers/auth_providers.dart';
+import '../../features/auth/services/auth_service.dart';
 
 class SyncService {
   final HiveService _hiveService;
   final LoggerService _logger;
   final Ref _ref;
   final FirebaseFirestore _firestore;
+  final AuthService _authService;
 
   Timer? _syncTimer;
   bool _isSyncing = false;
@@ -23,10 +24,12 @@ class SyncService {
     required Ref ref,
     FirebaseFirestore? firestore,
     LoggerService? logger,
+    AuthService? authService,
   })  : _hiveService = hiveService,
         _ref = ref,
         _firestore = firestore ?? FirebaseFirestore.instance,
-        _logger = logger ?? LoggerService();
+        _logger = logger ?? LoggerService(),
+        _authService = authService ?? AuthService();
 
   void dispose() {
     stopPeriodicSync();
@@ -57,9 +60,9 @@ class SyncService {
     _logger.info('Starting sync of pending changes');
 
     try {
-      final connectivityResult = await Connectivity().checkConnectivity();
-      if (connectivityResult.contains(ConnectivityResult.none)) {
-        _logger.info('No internet connection, skipping sync');
+      final isGuest = await _authService.isGuestSession();
+      if (isGuest) {
+        _logger.info('Skipping sync for guest user');
         return;
       }
 
@@ -110,15 +113,6 @@ class SyncService {
       _logger.info('Sync completed successfully');
     } catch (e, stackTrace) {
       _logger.error('Error during sync', e, stackTrace);
-      // Mark failed cards with error status
-      final pendingCards = _hiveService
-          .getAllCards()
-          .where((card) => card.syncStatus == SyncStatus.pending);
-
-      for (final card in pendingCards) {
-        card.markError();
-        await _hiveService.saveCard(card);
-      }
     } finally {
       _isSyncing = false;
     }
@@ -252,6 +246,7 @@ final syncServiceProvider = Provider<SyncService>((ref) {
   return SyncService(
     hiveService: hiveService,
     ref: ref,
+    authService: AuthService(),
   );
 });
 

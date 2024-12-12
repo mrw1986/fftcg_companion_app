@@ -10,6 +10,7 @@ import '../../../core/logging/logger_service.dart';
 import '../../../models/user_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import 'dart:convert';
 
 class AuthService {
   final FirebaseAuth _auth;
@@ -162,31 +163,29 @@ class AuthService {
     try {
       _logger.info('Creating guest session');
 
+      final timestamp = DateTime.now();
+      final guestId = 'guest_${timestamp.millisecondsSinceEpoch}';
+
       final guestUser = UserModel(
-        id: 'guest_${DateTime.now().millisecondsSinceEpoch}',
+        id: guestId,
         displayName: 'Guest User',
         isGuest: true,
-        createdAt: DateTime.now(),
-        lastLoginAt: DateTime.now(),
+        isEmailVerified: false,
+        createdAt: timestamp,
+        lastLoginAt: timestamp,
       );
 
       final prefs = await SharedPreferences.getInstance();
-      final guestDataJson = guestUser.toJson();
-      _logger.info('Saving guest data: $guestDataJson');
+      await prefs.setString(_guestPrefsKey, jsonEncode(guestUser.toMap()));
 
-      final result = await prefs.setString(_guestPrefsKey, guestDataJson);
-      if (!result) {
-        throw CustomAuthException(
-          code: 'guest-session-save-failed',
-          message: 'Failed to save guest session',
-        );
-      }
-
-      _logger.info('Guest session created successfully');
+      _logger.info('Guest session created successfully with ID: $guestId');
       return guestUser;
     } catch (e, stackTrace) {
       _logger.error('Error creating guest session', e, stackTrace);
-      rethrow;
+      throw CustomAuthException(
+        code: 'guest-session-failed',
+        message: 'Failed to create guest session: ${e.toString()}',
+      );
     }
   }
 

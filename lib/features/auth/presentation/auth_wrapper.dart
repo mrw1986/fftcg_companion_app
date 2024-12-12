@@ -52,25 +52,28 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final authState = ref.watch(authNotifierProvider);
+Widget build(BuildContext context) {
+  final authState = ref.watch(authNotifierProvider);
+  
+  _logger.info('Auth status: ${authState.status}');
 
-    _logger.info('Auth status: ${authState.status}');
-
-    switch (authState.status) {
-      case AuthStatus.authenticated:
-      case AuthStatus.guest:
-        return const CardsScreen();
-      case AuthStatus.unauthenticated:
-      case AuthStatus.error:
-        return const LoginScreen();
-      case AuthStatus.loading:
-      case AuthStatus.initial:
-        return const Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(),
-          ),
-        );
-    }
+  switch (authState.status) {
+    case AuthStatus.authenticated:
+    case AuthStatus.guest:
+      // Both authenticated and guest users see the CardsScreen
+      return const CardsScreen();
+      
+    case AuthStatus.unauthenticated:
+    case AuthStatus.error:
+      return const LoginScreen();
+      
+    case AuthStatus.loading:
+    case AuthStatus.initial:
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
   }
+}
 }

@@ -66,37 +66,12 @@ Future<void> _initializeFirebase(LoggerService logger) async {
     );
 
     // Initialize App Check with retry mechanism
-    if (!kIsWeb) {
-      int retries = 3;
-      while (retries > 0) {
-        try {
-          await FirebaseAppCheck.instance.activate(
-            androidProvider: kDebugMode
-                ? AndroidProvider.debug
-                : AndroidProvider.playIntegrity,
-            appleProvider: AppleProvider.appAttest,
-          );
-          break;
-        } catch (e, stackTrace) {
-          retries--;
-          logger.error(
-            'App Check initialization attempt failed. Retries left: $retries',
-            e,
-            stackTrace,
-          );
-          if (retries > 0) {
-            await Future.delayed(const Duration(seconds: 2));
-          } else {
-            // In debug mode, continue without App Check
-            if (kDebugMode) {
-              logger.warning('Continuing without App Check in debug mode');
-              break;
-            } else {
-              rethrow;
-            }
-          }
-        }
-      }
+    if (!kIsWeb && !kDebugMode) {
+      // Only enable App Check in release mode
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: AndroidProvider.playIntegrity,
+        appleProvider: AppleProvider.appAttest,
+      );
     }
 
     logger.info('Firebase initialized successfully');

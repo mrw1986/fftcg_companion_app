@@ -6,6 +6,7 @@ import '../../../core/logging/logger_service.dart';
 import '../repositories/auth_repository.dart';
 import '../enums/auth_status.dart';
 import 'auth_state.dart';
+import '../services/auth_service.dart';
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _authRepository;
@@ -109,21 +110,27 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.info('Attempting guest sign in');
 
       final guestUser = await _authRepository.signInAsGuest();
+
       if (guestUser != null) {
         state = state.copyWith(
           status: AuthStatus.guest,
           user: guestUser,
           errorMessage: null,
         );
-        _logger.info('Guest sign in completed successfully');
+        _logger.info('Guest sign in completed successfully: ${guestUser.id}');
       } else {
-        throw Exception('Failed to create guest session');
+        throw CustomAuthException(
+          code: 'guest-session-failed',
+          message: 'Failed to create guest session',
+        );
       }
     } catch (e, stackTrace) {
       _logger.error('Error signing in as guest', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Failed to continue as guest',
+        errorMessage: e is CustomAuthException
+            ? e.message
+            : 'Failed to continue as guest',
       );
     }
   }
