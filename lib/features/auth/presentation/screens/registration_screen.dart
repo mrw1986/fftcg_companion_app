@@ -41,7 +41,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
               _displayNameController.text.trim(),
             );
       } catch (e, stackTrace) {
-        _logger.error('Registration failed', e, stackTrace);
+        _logger.severe('Registration failed', e, stackTrace);
       }
     }
   }

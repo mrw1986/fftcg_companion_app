@@ -57,7 +57,7 @@ class AuthService {
       }
       return null;
     } catch (e, stackTrace) {
-      _logger.error('Error getting current user', e, stackTrace);
+      _logger.severe('Error getting current user', e, stackTrace);
       return null;
     }
   }
@@ -104,7 +104,7 @@ class AuthService {
       // Create or update user document
       return await _createOrUpdateUser(user);
     } catch (e, stackTrace) {
-      _logger.error('Error signing in with Google', e, stackTrace);
+      _logger.severe('Error signing in with Google', e, stackTrace);
 
       if (e is FirebaseAuthException) {
         throw CustomAuthException(
@@ -145,13 +145,13 @@ class AuthService {
       await _clearGuestSession();
       return await _createOrUpdateUser(user);
     } on FirebaseAuthException catch (e, stackTrace) {
-      _logger.error('Firebase Auth Error: ${e.message}', e, stackTrace);
+      _logger.severe('Firebase Auth Error: ${e.message}', e, stackTrace);
       throw CustomAuthException(
         code: e.code,
         message: _getReadableAuthError(e.code),
       );
     } catch (e, stackTrace) {
-      _logger.error('Error signing in with email/password', e, stackTrace);
+      _logger.severe('Error signing in with email/password', e, stackTrace);
       throw CustomAuthException(
         code: 'unknown',
         message: 'Authentication failed: ${e.toString()}',
@@ -176,12 +176,18 @@ class AuthService {
       );
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_guestPrefsKey, jsonEncode(guestUser.toMap()));
+      // Convert timestamps to ISO strings for JSON storage
+      final guestData = {
+        ...guestUser.toMap(),
+        'createdAt': guestUser.createdAt.toIso8601String(),
+        'lastLoginAt': guestUser.lastLoginAt.toIso8601String(),
+      };
+      await prefs.setString(_guestPrefsKey, jsonEncode(guestData));
 
       _logger.info('Guest session created successfully with ID: $guestId');
       return guestUser;
     } catch (e, stackTrace) {
-      _logger.error('Error creating guest session', e, stackTrace);
+      _logger.severe('Error creating guest session', e, stackTrace);
       throw CustomAuthException(
         code: 'guest-session-failed',
         message: 'Failed to create guest session: ${e.toString()}',
@@ -194,7 +200,7 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       return prefs.containsKey(_guestPrefsKey);
     } catch (e, stackTrace) {
-      _logger.error('Error checking guest session', e, stackTrace);
+      _logger.severe('Error checking guest session', e, stackTrace);
       return false;
     }
   }
@@ -204,7 +210,7 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_guestPrefsKey);
     } catch (e, stackTrace) {
-      _logger.error('Error clearing guest session', e, stackTrace);
+      _logger.severe('Error clearing guest session', e, stackTrace);
     }
   }
 
@@ -237,13 +243,13 @@ class AuthService {
 
       return await _createOrUpdateUser(user);
     } on FirebaseAuthException catch (e, stackTrace) {
-      _logger.error('Firebase Auth Error: ${e.message}', e, stackTrace);
+      _logger.severe('Firebase Auth Error: ${e.message}', e, stackTrace);
       throw CustomAuthException(
         code: e.code,
         message: _getReadableAuthError(e.code),
       );
     } catch (e, stackTrace) {
-      _logger.error('Error registering with email/password', e, stackTrace);
+      _logger.severe('Error registering with email/password', e, stackTrace);
       throw CustomAuthException(
         code: 'unknown',
         message: 'Registration failed: ${e.toString()}',
@@ -265,7 +271,7 @@ class AuthService {
       ]);
       _logger.info('User signed out successfully');
     } catch (e, stackTrace) {
-      _logger.error('Error signing out', e, stackTrace);
+      _logger.severe('Error signing out', e, stackTrace);
       rethrow;
     }
   }
@@ -300,7 +306,7 @@ class AuthService {
 
       return userData;
     } catch (e, stackTrace) {
-      _logger.error('Error creating/updating user', e, stackTrace);
+      _logger.severe('Error creating/updating user', e, stackTrace);
       throw CustomAuthException(
         code: 'user-update-failed',
         message: 'Failed to update user data: ${e.toString()}',
@@ -316,7 +322,7 @@ class AuthService {
         _logger.info('Verification email sent to ${user.email}');
       }
     } catch (e, stackTrace) {
-      _logger.error('Error sending email verification', e, stackTrace);
+      _logger.severe('Error sending email verification', e, stackTrace);
       rethrow;
     }
   }
@@ -329,7 +335,7 @@ class AuthService {
         _logger.info('Email verification status: ${user.emailVerified}');
       }
     } catch (e, stackTrace) {
-      _logger.error('Error checking email verification', e, stackTrace);
+      _logger.severe('Error checking email verification', e, stackTrace);
       rethrow;
     }
   }
@@ -354,7 +360,7 @@ class AuthService {
           );
         }
       } catch (e) {
-        _logger.error('App Check verification failed', e);
+        _logger.severe('App Check verification failed', e);
         throw CustomAuthException(
           code: 'app-check-failed',
           message: 'Failed to verify app authenticity',

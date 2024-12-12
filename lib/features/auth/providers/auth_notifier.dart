@@ -52,7 +52,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // State will be updated by the auth state listener
       _logger.info('Google sign in completed successfully');
     } catch (e, stackTrace) {
-      _logger.error('Error signing in with Google', e, stackTrace);
+      _logger.severe('Error signing in with Google', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: 'Failed to sign in with Google',
@@ -70,7 +70,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // State will be updated by the auth state listener
       _logger.info('Email/password sign in completed successfully');
     } catch (e, stackTrace) {
-      _logger.error('Error signing in with email/password', e, stackTrace);
+      _logger.severe('Error signing in with email/password', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: 'Invalid email or password',
@@ -96,7 +96,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // State will be updated by the auth state listener
       _logger.info('User registration completed successfully');
     } catch (e, stackTrace) {
-      _logger.error('Error registering with email/password', e, stackTrace);
+      _logger.severe('Error registering with email/password', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: 'Failed to create account',
@@ -125,7 +125,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         );
       }
     } catch (e, stackTrace) {
-      _logger.error('Error signing in as guest', e, stackTrace);
+      _logger.severe('Error signing in as guest', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: e is CustomAuthException
@@ -145,7 +145,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // State will be updated by the auth state listener
       _logger.info('Sign out completed successfully');
     } catch (e, stackTrace) {
-      _logger.error('Error signing out', e, stackTrace);
+      _logger.severe('Error signing out', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: 'Failed to sign out',
@@ -159,7 +159,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await _authRepository.sendEmailVerification();
       _logger.info('Email verification sent successfully');
     } catch (e, stackTrace) {
-      _logger.error('Error sending email verification', e, stackTrace);
+      _logger.severe('Error sending email verification', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: 'Failed to send verification email',
@@ -172,7 +172,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _logger.info('Checking email verification status');
       await _authRepository.checkEmailVerification();
     } catch (e, stackTrace) {
-      _logger.error('Error checking email verification', e, stackTrace);
+      _logger.severe('Error checking email verification', e, stackTrace);
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: 'Failed to check email verification',

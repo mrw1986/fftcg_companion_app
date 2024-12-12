@@ -112,7 +112,7 @@ class SyncService {
       await _updateLastSyncTime();
       _logger.info('Sync completed successfully');
     } catch (e, stackTrace) {
-      _logger.error('Error during sync', e, stackTrace);
+      _logger.severe('Error during sync', e, stackTrace);
     } finally {
       _isSyncing = false;
     }
@@ -150,7 +150,7 @@ class SyncService {
 
       _logger.info('Conversion revert completed successfully');
     } catch (e, stackTrace) {
-      _logger.error('Error reverting conversion', e, stackTrace);
+      _logger.severe('Error reverting conversion', e, stackTrace);
       rethrow;
     }
   }
@@ -162,7 +162,7 @@ class SyncService {
           card.syncStatus == SyncStatus.pending ||
           card.syncStatus == SyncStatus.error);
     } catch (e, stackTrace) {
-      _logger.error('Error checking sync status', e, stackTrace);
+      _logger.severe('Error checking sync status', e, stackTrace);
       return false;
     }
   }
@@ -176,7 +176,7 @@ class SyncService {
       }
       _logger.info('Reset sync status for all cards');
     } catch (e, stackTrace) {
-      _logger.error('Error resetting sync status', e, stackTrace);
+      _logger.severe('Error resetting sync status', e, stackTrace);
       rethrow;
     }
   }
@@ -185,7 +185,7 @@ class SyncService {
     try {
       return _hiveService.getAllCards().length;
     } catch (e, stackTrace) {
-      _logger.error('Error getting card count', e, stackTrace);
+      _logger.severe('Error getting card count', e, stackTrace);
       return 0;
     }
   }
@@ -198,7 +198,7 @@ class SyncService {
           ? DateTime.fromMillisecondsSinceEpoch(timestamp)
           : null;
     } catch (e, stackTrace) {
-      _logger.error('Error getting last sync time', e, stackTrace);
+      _logger.severe('Error getting last sync time', e, stackTrace);
       return null;
     }
   }
@@ -211,7 +211,7 @@ class SyncService {
         DateTime.now().millisecondsSinceEpoch,
       );
     } catch (e, stackTrace) {
-      _logger.error('Error updating last sync time', e, stackTrace);
+      _logger.severe('Error updating last sync time', e, stackTrace);
     }
   }
 
@@ -230,7 +230,7 @@ class SyncService {
 
       return SyncStatus.synced;
     } catch (e, stackTrace) {
-      _logger.error('Error getting sync status', e, stackTrace);
+      _logger.severe('Error getting sync status', e, stackTrace);
       return SyncStatus.error;
     }
   }

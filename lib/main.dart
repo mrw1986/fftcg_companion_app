@@ -39,7 +39,7 @@ void main() async {
       ),
     );
   } catch (e, stackTrace) {
-    logger.error('Failed to initialize app', e, stackTrace);
+    logger.severe('Failed to initialize app', e, stackTrace);
     runApp(
       MaterialApp(
         theme: AppTheme.darkTheme,
@@ -76,7 +76,7 @@ Future<void> _initializeFirebase(LoggerService logger) async {
 
     logger.info('Firebase initialized successfully');
   } catch (e, stackTrace) {
-    logger.error('Firebase initialization failed', e, stackTrace);
+    logger.severe('Firebase initialization failed', e, stackTrace);
     rethrow;
   }
 }

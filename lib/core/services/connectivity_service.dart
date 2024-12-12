@@ -52,7 +52,7 @@ class ConnectivityService {
             'Connectivity status changed: ${hasConnection ? 'online' : 'offline'}');
       }
     } catch (e, stackTrace) {
-      _logger.error('Error checking connectivity', e, stackTrace);
+      _logger.severe('Error checking connectivity', e, stackTrace);
       // In case of error, assume we're offline
       if (_lastKnownStatus) {
         _lastKnownStatus = false;
@@ -73,7 +73,7 @@ class ConnectivityService {
       }
       return await _connectionChecker.hasConnection;
     } catch (e, stackTrace) {
-      _logger.error('Error checking current connectivity', e, stackTrace);
+      _logger.severe('Error checking current connectivity', e, stackTrace);
       return false;
     }
   }
@@ -96,7 +96,7 @@ class ConnectivityService {
 
       return hostReachable.isSuccess;
     } catch (e, stackTrace) {
-      _logger.error('Error checking stable connection', e, stackTrace);
+      _logger.severe('Error checking stable connection', e, stackTrace);
       return false;
     }
   }
@@ -118,7 +118,7 @@ class ConnectivityService {
         _logger.info('Connection checker configured successfully');
       }
     } catch (e, stackTrace) {
-      _logger.error('Error configuring connection checker', e, stackTrace);
+      _logger.severe('Error configuring connection checker', e, stackTrace);
     }
   }
 
@@ -134,7 +134,7 @@ class ConnectivityService {
         lastChecked: DateTime.now(),
       );
     } catch (e, stackTrace) {
-      _logger.error('Error getting detailed connection status', e, stackTrace);
+      _logger.severe('Error getting detailed connection status', e, stackTrace);
       return ConnectionStatus(
         isConnected: false,
         connectionTypes: [],

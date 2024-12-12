@@ -32,7 +32,7 @@ class _OfflineManagementScreenState extends ConsumerState<OfflineManagementScree
       }
       _logger.info('Manual sync completed');
     } catch (e) {
-      _logger.error('Manual sync failed', e);
+      _logger.severe('Manual sync failed', e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -83,7 +83,7 @@ class _OfflineManagementScreenState extends ConsumerState<OfflineManagementScree
         }
         _logger.info('Sync reset completed');
       } catch (e) {
-        _logger.error('Sync reset failed', e);
+        _logger.severe('Sync reset failed', e);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to reset sync status')),

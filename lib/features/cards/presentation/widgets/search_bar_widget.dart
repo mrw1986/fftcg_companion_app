@@ -98,7 +98,7 @@ class _CardSearchBarState extends ConsumerState<CardSearchBar> {
                                 card.lowResUrl,
                                 fit: BoxFit.contain,
                                 errorBuilder: (context, error, stackTrace) {
-                                  _logger.error('Error loading card image',
+                                  _logger.severe('Error loading card image',
                                       error, stackTrace);
                                   return const Icon(Icons.error);
                                 },
@@ -147,7 +147,7 @@ class _CardSearchBarState extends ConsumerState<CardSearchBar> {
                     ),
                   ),
                   error: (error, stackTrace) {
-                    _logger.error('Search error', error, stackTrace);
+                    _logger.severe('Search error', error, stackTrace);
                     return const Padding(
                       padding: EdgeInsets.all(16.0),
                       child: Text('Error searching cards'),

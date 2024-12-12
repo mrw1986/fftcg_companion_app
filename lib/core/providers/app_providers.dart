@@ -24,7 +24,7 @@ final initializationProvider = FutureProvider<bool>((ref) async {
     logger.info('App initialization completed successfully');
     return true;
   } catch (e, stack) {
-    logger.error('App initialization failed', e, stack);
+    logger.severe('App initialization failed', e, stack);
     return false;
   }
 });
@@ -39,7 +39,7 @@ final connectivityStatusProvider = StreamProvider<bool>((ref) async* {
       yield status;
     }
   } catch (e, stack) {
-    logger.error('Error monitoring connectivity', e, stack);
+    logger.severe('Error monitoring connectivity', e, stack);
     yield false;
   }
 });
@@ -110,7 +110,7 @@ class AppStateNotifier extends StateNotifier<AppState> {
 
       _logger.info('App state initialized successfully');
     } catch (e, stack) {
-      _logger.error('Error initializing app state', e, stack);
+      _logger.severe('Error initializing app state', e, stack);
       state = state.copyWith(
         error: 'Failed to initialize app: ${e.toString()}',
       );

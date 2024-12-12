@@ -1,3 +1,4 @@
+// lib/core/logging/logger_service.dart
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
@@ -101,8 +102,7 @@ ${_formatStackTrace(record.stackTrace)}
 
   void info(String message) => _logger.info(message);
   void warning(String message) => _logger.warning(message);
-
-  void error(String message, [Object? error, StackTrace? stackTrace]) {
+  void severe(String message, [Object? error, StackTrace? stackTrace]) {
     _logger.severe(message, error, stackTrace);
   }
 
@@ -118,21 +118,30 @@ Details: ${exception.toString()}''';
   }
 
   Future<void> shareLogs() async {
-    final logs = <XFile>[];
+    try {
+      final Directory tempDir = await getTemporaryDirectory();
+      final File tempFile = File('${tempDir.path}/FFTCG_Companion_Logs.txt');
 
-    if (_logFile != null && await _logFile!.exists()) {
-      logs.add(XFile(_logFile!.path));
-    }
+      final StringBuffer buffer = StringBuffer();
 
-    if (_errorLogFile != null && await _errorLogFile!.exists()) {
-      logs.add(XFile(_errorLogFile!.path));
-    }
+      if (_logFile != null && await _logFile!.exists()) {
+        buffer.writeln('=== General Logs ===');
+        buffer.writeln(await _logFile!.readAsString());
+      }
 
-    if (logs.isNotEmpty) {
+      if (_errorLogFile != null && await _errorLogFile!.exists()) {
+        buffer.writeln('=== Error Logs ===');
+        buffer.writeln(await _errorLogFile!.readAsString());
+      }
+
+      await tempFile.writeAsString(buffer.toString());
+
       await Share.shareXFiles(
-        logs,
+        [XFile(tempFile.path, mimeType: 'text/plain')],
         subject: 'FFTCG Companion Logs',
       );
+    } catch (e, stack) {
+      _logger.severe('Error sharing logs', e, stack);
     }
   }
 

@@ -62,11 +62,11 @@ class CardNotifier extends StateNotifier<CardState> {
             status: CardLoadingStatus.error,
             errorMessage: 'Failed to load cards',
           );
-          _logger.error('Error loading cards', error, stackTrace);
+          _logger.severe('Error loading cards', error, stackTrace);
         },
       );
     } catch (e, stackTrace) {
-      _logger.error('Error setting up cards stream', e, stackTrace);
+      _logger.severe('Error setting up cards stream', e, stackTrace);
       state = state.copyWith(
         status: CardLoadingStatus.error,
         errorMessage: 'Failed to initialize card loading',

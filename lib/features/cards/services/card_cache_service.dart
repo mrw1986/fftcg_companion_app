@@ -22,7 +22,7 @@ class CardCacheService {
       await _prefs.setString(_filterOptionsKey, jsonEncode(options.toJson()));
       _logger.info('Filter options saved to cache');
     } catch (e, stackTrace) {
-      _logger.error('Error saving filter options', e, stackTrace);
+      _logger.severe('Error saving filter options', e, stackTrace);
     }
   }
 
@@ -32,7 +32,7 @@ class CardCacheService {
       if (data == null) return null;
       return CardFilterOptions.fromJson(jsonDecode(data));
     } catch (e, stackTrace) {
-      _logger.error('Error loading filter options', e, stackTrace);
+      _logger.severe('Error loading filter options', e, stackTrace);
       return null;
     }
   }
@@ -55,7 +55,7 @@ class CardCacheService {
         _logger.info('Added card to recent cards: $cardNumber');
       }
     } catch (e, stackTrace) {
-      _logger.error('Error adding recent card', e, stackTrace);
+      _logger.severe('Error adding recent card', e, stackTrace);
     }
   }
 
@@ -63,7 +63,7 @@ class CardCacheService {
     try {
       return _prefs.getStringList(_recentCardsKey) ?? [];
     } catch (e, stackTrace) {
-      _logger.error('Error getting recent cards', e, stackTrace);
+      _logger.severe('Error getting recent cards', e, stackTrace);
       return [];
     }
   }
@@ -73,7 +73,7 @@ class CardCacheService {
       await _prefs.remove(_recentCardsKey);
       _logger.info('Recent cards cleared');
     } catch (e, stackTrace) {
-      _logger.error('Error clearing recent cards', e, stackTrace);
+      _logger.severe('Error clearing recent cards', e, stackTrace);
     }
   }
 }

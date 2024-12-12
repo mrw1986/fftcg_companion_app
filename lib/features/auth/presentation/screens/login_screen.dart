@@ -40,10 +40,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               _passwordController.text,
             );
       } catch (e, stackTrace) {
-        _logger.error('Email login failed', e, stackTrace);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        _logger.severe('Email login failed', e, stackTrace);
+        if (mounted) {
+          // Add mounted check
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString())),
+          );
+        }
       }
     }
   }
@@ -53,7 +56,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _logger.info('Attempting Google sign-in');
       await ref.read(authNotifierProvider.notifier).signInWithGoogle();
     } catch (e, stackTrace) {
-      _logger.error('Google sign-in failed', e, stackTrace);
+      _logger.severe('Google sign-in failed', e, stackTrace);
+      if (mounted) {
+        // Add mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
     }
   }
 
@@ -62,17 +71,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _logger.info('Attempting guest login');
       await ref.read(authNotifierProvider.notifier).signInAsGuest();
     } catch (e, stackTrace) {
-      _logger.error('Guest login failed', e, stackTrace);
+      _logger.severe('Guest login failed', e, stackTrace);
+      if (mounted) {
+        // Add mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
     }
   }
 
   Future<void> _handlePasswordReset() async {
     if (_emailController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter your email address'),
-        ),
-      );
+      if (mounted) {
+        // Add mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please enter your email address'),
+          ),
+        );
+      }
       return;
     }
 
@@ -83,6 +101,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
 
       if (mounted) {
+        // Add mounted check
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Password reset email sent'),
@@ -90,8 +109,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         );
       }
     } catch (e, stackTrace) {
-      _logger.error('Password reset failed', e, stackTrace);
+      _logger.severe('Password reset failed', e, stackTrace);
       if (mounted) {
+        // Add mounted check
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Failed to send password reset email'),

@@ -111,13 +111,13 @@ class CardRepository {
 
           yield resultsList;
         } catch (e, stackTrace) {
-          _logger.error('Error processing card snapshot', e, stackTrace);
+          _logger.severe('Error processing card snapshot', e, stackTrace);
           // Return existing local data on error
           yield localResults;
         }
       }
     } catch (e, stackTrace) {
-      _logger.error('Error watching cards', e, stackTrace);
+      _logger.severe('Error watching cards', e, stackTrace);
       // Use _getLocalCards directly in catch block
       yield _getLocalCards(
         searchQuery: searchQuery,
@@ -163,7 +163,7 @@ class CardRepository {
       await _hiveService.saveCard(card);
       return card;
     } catch (e, stackTrace) {
-      _logger.error('Error getting card by number', e, stackTrace);
+      _logger.severe('Error getting card by number', e, stackTrace);
       rethrow;
     }
   }
@@ -201,7 +201,7 @@ class CardRepository {
 
       return cards;
     } catch (e, stackTrace) {
-      _logger.error('Error searching cards', e, stackTrace);
+      _logger.severe('Error searching cards', e, stackTrace);
       // Return local results on error
       return _getLocalCards(searchQuery: query);
     }
@@ -241,7 +241,7 @@ class CardRepository {
       _logger.info('Found ${elements.length} unique elements');
       return elements;
     } catch (e, stackTrace) {
-      _logger.error('Error getting unique elements', e, stackTrace);
+      _logger.severe('Error getting unique elements', e, stackTrace);
       rethrow;
     }
   }
@@ -284,7 +284,7 @@ class CardRepository {
       _logger.info('Found ${cardTypes.length} unique card types');
       return cardTypes;
     } catch (e, stackTrace) {
-      _logger.error('Error getting unique card types', e, stackTrace);
+      _logger.severe('Error getting unique card types', e, stackTrace);
       rethrow;
     }
   }
@@ -343,7 +343,7 @@ class CardRepository {
       _logger.info('Retrieved total of ${allCards.length} cards');
       return allCards;
     } catch (e, stackTrace) {
-      _logger.error('Error getting all cards', e, stackTrace);
+      _logger.severe('Error getting all cards', e, stackTrace);
       rethrow;
     }
   }
@@ -384,7 +384,7 @@ class CardRepository {
 
       return cards;
     } catch (e, stackTrace) {
-      _logger.error('Error getting local cards', e, stackTrace);
+      _logger.severe('Error getting local cards', e, stackTrace);
       return [];
     }
   }
@@ -394,7 +394,7 @@ class CardRepository {
       await _hiveService.saveCards(cards);
       _logger.info('Saved ${cards.length} cards locally');
     } catch (e, stackTrace) {
-      _logger.error('Error saving cards locally', e, stackTrace);
+      _logger.severe('Error saving cards locally', e, stackTrace);
       rethrow;
     }
   }
@@ -404,7 +404,7 @@ class CardRepository {
       await _hiveService.saveCard(card);
       _logger.info('Card saved locally: ${card.cardNumber}');
     } catch (e, stackTrace) {
-      _logger.error('Error saving card locally', e, stackTrace);
+      _logger.severe('Error saving card locally', e, stackTrace);
       rethrow;
     }
   }
@@ -414,7 +414,7 @@ class CardRepository {
       await _hiveService.deleteCard(cardNumber);
       _logger.info('Card deleted locally: $cardNumber');
     } catch (e, stackTrace) {
-      _logger.error('Error deleting card locally', e, stackTrace);
+      _logger.severe('Error deleting card locally', e, stackTrace);
       rethrow;
     }
   }
@@ -428,7 +428,7 @@ class CardRepository {
         _logger.info('Card marked for sync: $cardNumber');
       }
     } catch (e, stackTrace) {
-      _logger.error('Error marking card for sync', e, stackTrace);
+      _logger.severe('Error marking card for sync', e, stackTrace);
       rethrow;
     }
   }
@@ -501,7 +501,7 @@ class CardRepository {
 
       _logger.info('Successfully synced ${localCards.length} cards');
     } catch (e, stackTrace) {
-      _logger.error('Error syncing user data', e, stackTrace);
+      _logger.severe('Error syncing user data', e, stackTrace);
       rethrow;
     }
   }
@@ -511,7 +511,7 @@ class CardRepository {
       await _hiveService.clearAll();
       _logger.info('Local data cleared successfully');
     } catch (e, stackTrace) {
-      _logger.error('Error clearing local data', e, stackTrace);
+      _logger.severe('Error clearing local data', e, stackTrace);
       rethrow;
     }
   }
@@ -552,7 +552,7 @@ class CardRepository {
           DateTime.fromMillisecondsSinceEpoch(lastCacheTime);
       return DateTime.now().difference(lastCacheDateTime) < _cacheExpiration;
     } catch (e, stackTrace) {
-      _logger.error('Error checking cache validity', e, stackTrace);
+      _logger.severe('Error checking cache validity', e, stackTrace);
       return false;
     }
   }
@@ -572,7 +572,7 @@ class CardRepository {
 
       _logger.info('Cache timestamp updated successfully');
     } catch (e, stackTrace) {
-      _logger.error('Error updating cache timestamp', e, stackTrace);
+      _logger.severe('Error updating cache timestamp', e, stackTrace);
       throw CardRepositoryException(
         'Failed to update cache timestamp',
         code: 'cache-update-failed',
