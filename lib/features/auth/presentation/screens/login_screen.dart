@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../enums/auth_status.dart';
 import '../../providers/auth_providers.dart';
+import '../../services/auth_service.dart';
 import '../widgets/auth_button.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/auth_error_widget.dart';
@@ -34,14 +35,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _handleEmailLogin() async {
     if (!mounted) return;
     if (_formKey.currentState?.validate() ?? false) {
-      // Store scaffoldMessenger outside try block so it's accessible in catch block
       final scaffoldMessenger = ScaffoldMessenger.of(context);
+      final email = _emailController.text.trim(); // Move this up
+      final password = _passwordController.text; // Move this up
 
       try {
-        _logger.info('Attempting email login for: ${_emailController.text}');
-
-        final email = _emailController.text.trim();
-        final password = _passwordController.text;
+        _logger.info('Attempting email login for: $email');
 
         // Attempt sign in
         await ref.read(authNotifierProvider.notifier).signInWithEmailPassword(
@@ -51,62 +50,48 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
         // Check if still mounted after async operation
         if (!mounted) return;
-
-        // After successful sign in, check verification status
-        final isVerified =
-            await ref.read(authNotifierProvider.notifier).isEmailVerified();
-
+      } catch (e, stackTrace) {
+        _logger.severe('Email login failed', e, stackTrace);
         if (!mounted) return;
 
-        if (!isVerified) {
+        if (e is CustomAuthException && e.code == 'email-not-verified') {
           await _showVerificationDialog(email);
 
-          // Check mounted again after dialog
           if (!mounted) return;
 
-          // Sign out since email isn't verified
-          await ref.read(authNotifierProvider.notifier).signOut();
-
-          // Use stored scaffoldMessenger
           scaffoldMessenger.showSnackBar(
             const SnackBar(
               content: Text('Please verify your email before signing in'),
             ),
           );
-          return;
-        }
-
-        // Only proceed if email is verified
-        _logger.info('Email verified, proceeding with login');
-      } catch (e, stackTrace) {
-        _logger.severe('Email login failed', e, stackTrace);
-        if (!mounted) return;
-
-        String errorMessage = 'Login failed';
-
-        if (e is FirebaseAuthException) {
-          switch (e.code) {
-            case 'user-not-found':
-              errorMessage = 'No account exists with this email';
-              break;
-            case 'wrong-password':
-              errorMessage = 'Invalid password';
-              break;
-            case 'invalid-email':
-              errorMessage = 'Invalid email format';
-              break;
-            case 'user-disabled':
-              errorMessage = 'This account has been disabled';
-              break;
-            default:
-              errorMessage = e.message ?? 'Authentication failed';
+        } else {
+          String errorMessage = 'Login failed';
+          if (e is FirebaseAuthException) {
+            switch (e.code) {
+              case 'user-not-found':
+                errorMessage = 'No account exists with this email';
+                break;
+              case 'wrong-password':
+                errorMessage = 'Invalid password';
+                break;
+              case 'invalid-email':
+                errorMessage = 'Invalid email format';
+                break;
+              case 'user-disabled':
+                errorMessage = 'This account has been disabled';
+                break;
+              default:
+                errorMessage = e.message ?? 'Authentication failed';
+            }
           }
+
+          scaffoldMessenger.showSnackBar(
+            SnackBar(content: Text(errorMessage)),
+          );
         }
 
-        // Use stored scaffoldMessenger
-        scaffoldMessenger.showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
+        // Clear error state after showing the message
+        ref.read(authNotifierProvider.notifier).clearError();
       }
     }
   }
@@ -349,4 +334,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ),
     );
   }
+
+@override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(authNotifierProvider.notifier).clearError();
+    });
+  }
+
 }

@@ -67,14 +67,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       await _authRepository.signInWithEmailPassword(email, password);
 
-      // State will be updated by the auth state listener
       _logger.info('Email/password sign in completed successfully');
     } catch (e, stackTrace) {
       _logger.severe('Error signing in with email/password', e, stackTrace);
-      state = state.copyWith(
-        status: AuthStatus.error,
-        errorMessage: 'Invalid email or password',
-      );
+
+      if (e is CustomAuthException && e.code == 'email-not-verified') {
+        // Pass through the verification error
+        state = state.copyWith(
+          status: AuthStatus.error,
+          errorMessage: e.message,
+        );
+        rethrow; // Important to rethrow this specific error
+      } else {
+        state = state.copyWith(
+          status: AuthStatus.error,
+          errorMessage: 'Invalid email or password',
+        );
+      }
     }
   }
 
