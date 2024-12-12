@@ -63,6 +63,16 @@ captures/
 .pub-cache/
 .pub/
 build/
+ios/*
+linux/*
+macos/*
+windows/*
+pubspec.lock
+README.md
+repomix.config.json
+web/index.html
+web/manifest.json
+export_codebase.ps1
 
 ### Firebase ###
 # Exclude specific Firebase service configuration files
