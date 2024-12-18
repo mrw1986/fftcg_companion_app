@@ -88,7 +88,10 @@ export_codebase.ps1
 # Exclude specific Firebase service configuration files
 google-services.json
 GoogleService-Info.plist
-lib/firebase_options.dart # Added to exclude sensitive Firebase options
+lib/firebase_options.dart
+*/firebase_options.dart
+codebase.xml
+
 
 # Exclude local emulator databases
 /firestore_emulator_data/
