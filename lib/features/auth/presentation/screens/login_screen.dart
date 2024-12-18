@@ -6,7 +6,6 @@ import '../../enums/auth_status.dart';
 import '../../providers/auth_providers.dart';
 import '../widgets/auth_button.dart';
 import '../widgets/auth_text_field.dart';
-import '../widgets/auth_error_widget.dart';
 import '../../../../core/logging/logger_service.dart';
 import 'registration_screen.dart';
 import '../../../settings/presentation/screens/logs_viewer_screen.dart';
@@ -24,21 +23,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _logger = LoggerService();
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _logger.info('Login screen initialized');
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(authNotifierProvider.notifier).clearError();
-    });
   }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    ref.read(authNotifierProvider.notifier).resetState();
     super.dispose();
   }
 
@@ -58,6 +54,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return 'Network error. Please check your connection and try again.';
       case 'too-many-requests':
         return 'Too many attempts. Please try again later.';
+      case 'account-exists-with-different-credential':
+        return 'An account already exists with Google Sign-In. Please use Google Sign-In instead.';
       default:
         return e.message ?? 'An error occurred. Please try again.';
     }
@@ -65,6 +63,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _handleEmailLogin() async {
     if (_formKey.currentState?.validate() ?? false) {
+      setState(() => _isLoading = true);
+
       try {
         _logger.info('Attempting email login for: ${_emailController.text}');
         await ref.read(authNotifierProvider.notifier).signInWithEmailPassword(
@@ -83,15 +83,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content:
-                    Text('An unexpected error occurred. Please try again.')),
+              content: Text('An unexpected error occurred. Please try again.'),
+            ),
           );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
         }
       }
     }
   }
 
   Future<void> _handleGoogleLogin() async {
+    setState(() => _isLoading = true);
+
     try {
       _logger.info('Attempting Google sign-in');
       await ref.read(authNotifierProvider.notifier).signInWithGoogle();
@@ -107,13 +113,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('An error occurred during Google sign-in')),
+            content: Text('An error occurred during Google sign-in'),
+          ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
 
   Future<void> _handleGuestLogin() async {
+    setState(() => _isLoading = true);
+
     try {
       _logger.info('Attempting guest login');
       await ref.read(authNotifierProvider.notifier).signInAsGuest();
@@ -123,6 +136,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to continue as guest')),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -168,6 +185,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
+    final isLoading = _isLoading || authState.status == AuthStatus.loading;
 
     return Scaffold(
       body: SafeArea(
@@ -218,19 +236,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: _handlePasswordReset,
+                      onPressed: isLoading ? null : _handlePasswordReset,
                       child: const Text('Forgot Password?'),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  if (authState.errorMessage != null)
-                    AuthErrorWidget(
-                      message: authState.errorMessage!,
-                    ),
                   AuthButton(
                     text: 'Sign In',
-                    onPressed: _handleEmailLogin,
-                    isLoading: authState.status == AuthStatus.loading,
+                    onPressed: isLoading ? () {} : _handleEmailLogin,
+                    isLoading: isLoading,
                   ),
                   const SizedBox(height: 16),
                   const Text(
@@ -240,24 +254,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 16),
                   AuthButton(
                     text: 'Continue with Google',
-                    onPressed: _handleGoogleLogin,
-                    isLoading: authState.status == AuthStatus.loading,
+                    onPressed: isLoading ? () {} : _handleGoogleLogin,
+                    isLoading: isLoading,
                     isOutlined: true,
                   ),
                   AuthButton(
                     text: 'Continue as Guest',
-                    onPressed: _handleGuestLogin,
-                    isLoading: authState.status == AuthStatus.loading,
+                    onPressed: isLoading ? () {} : _handleGuestLogin,
+                    isLoading: isLoading,
                     isOutlined: true,
                   ),
                   TextButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const RegistrationScreen(),
-                        ),
-                      );
-                    },
+                    onPressed: isLoading
+                        ? null
+                        : () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const RegistrationScreen(),
+                              ),
+                            );
+                          },
                     child: const Text('Create an Account'),
                   ),
                   if (kDebugMode)

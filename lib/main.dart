@@ -4,12 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-
 import 'core/logging/logger_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/cards/providers/card_providers.dart';
-import 'firebase_options.dart';
+import 'firebase_options.dart.bak';
 import 'core/providers/app_providers.dart';
 import 'features/auth/presentation/auth_wrapper.dart';
 import 'features/cards/presentation/screens/cards_screen.dart';
@@ -140,26 +138,18 @@ class ErrorScreen extends StatelessWidget {
 
 Future<void> _initializeFirebase(LoggerService logger) async {
   try {
-    // Check connectivity first
-    final connectivity = Connectivity();
-    final connectivityResult = await connectivity.checkConnectivity();
-    if (connectivityResult.contains(ConnectivityResult.none)) {
-      logger.warning('No network connectivity available');
-    }
-
-    // Initialize Firebase
+    // Initialize Firebase first
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Initialize App Check with retry mechanism
-    if (!kIsWeb && !kDebugMode) {
-      // Only enable App Check in release mode
-      await FirebaseAppCheck.instance.activate(
-        androidProvider: AndroidProvider.playIntegrity,
-        appleProvider: AppleProvider.appAttest,
-      );
-    }
+    // Initialize App Check with debug token in debug mode
+    await FirebaseAppCheck.instance.activate(
+      // Use debug provider in debug mode
+      androidProvider:
+          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+      appleProvider: AppleProvider.appAttest,
+    );
 
     logger.info('Firebase initialized successfully');
   } catch (e, stackTrace) {

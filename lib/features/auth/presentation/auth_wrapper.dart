@@ -94,23 +94,25 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
 
     _logger.info('Auth status: ${authState.status}');
 
-    switch (authState.status) {
-      case AuthStatus.authenticated:
-      case AuthStatus.guest:
-        // Both authenticated and guest users see the CardsScreen
-        return CardsScreen(handleLogout: _handleLogout);
-
-      case AuthStatus.unauthenticated:
-      case AuthStatus.error:
-        return const LoginScreen();
-
-      case AuthStatus.loading:
-      case AuthStatus.initial:
-        return const Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(),
-          ),
-        );
-    }
+    return switch (authState.status) {
+      AuthStatus.authenticated ||
+      AuthStatus.guest =>
+        CardsScreen(handleLogout: _handleLogout),
+      AuthStatus.unauthenticated || AuthStatus.error => const LoginScreen(),
+      AuthStatus.loading || AuthStatus.initial => FutureBuilder(
+          future: Future.delayed(const Duration(seconds: 3)), // Add timeout
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.done) {
+              // If still in initial/loading state after timeout, show login
+              return const LoginScreen();
+            }
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          },
+        ),
+    };
   }
 }

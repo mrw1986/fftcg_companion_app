@@ -6,7 +6,6 @@ import '../../enums/auth_status.dart';
 import '../../providers/auth_providers.dart';
 import '../widgets/auth_button.dart';
 import '../widgets/auth_text_field.dart';
-import '../widgets/auth_error_widget.dart';
 import '../../../../core/logging/logger_service.dart';
 import 'login_screen.dart';
 import 'account_linking_screen.dart';
@@ -26,14 +25,12 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _logger = LoggerService();
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _logger.info('Registration screen initialized');
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(authNotifierProvider.notifier).clearError();
-    });
   }
 
   @override
@@ -42,7 +39,6 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    ref.read(authNotifierProvider.notifier).resetState();
     super.dispose();
   }
 
@@ -65,6 +61,8 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
 
   Future<void> _handleRegistration() async {
     if (_formKey.currentState?.validate() ?? false) {
+      setState(() => _isLoading = true);
+
       try {
         _logger.info('Attempting registration for: ${_emailController.text}');
 
@@ -122,9 +120,13 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content:
-                    Text('An unexpected error occurred. Please try again.')),
+              content: Text('An unexpected error occurred. Please try again.'),
+            ),
           );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
         }
       }
     }
@@ -133,6 +135,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
+    final isLoading = _isLoading || authState.status == AuthStatus.loading;
 
     return Scaffold(
       appBar: AppBar(
@@ -200,14 +203,10 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                   },
                 ),
                 const SizedBox(height: 24),
-                if (authState.errorMessage != null)
-                  AuthErrorWidget(
-                    message: authState.errorMessage!,
-                  ),
                 AuthButton(
                   text: 'Create Account',
-                  onPressed: _handleRegistration,
-                  isLoading: authState.status == AuthStatus.loading,
+                  onPressed: isLoading ? () {} : _handleRegistration,
+                  isLoading: isLoading,
                 ),
               ],
             ),

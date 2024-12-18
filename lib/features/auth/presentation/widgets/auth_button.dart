@@ -18,7 +18,7 @@ class AuthButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final Widget button = isOutlined
         ? OutlinedButton(
-            onPressed: isLoading ? null : onPressed,
+            onPressed: isLoading ? () {} : onPressed,
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
@@ -28,7 +28,7 @@ class AuthButton extends StatelessWidget {
             child: _buildButtonContent(),
           )
         : ElevatedButton(
-            onPressed: isLoading ? null : onPressed,
+            onPressed: isLoading ? () {} : onPressed,
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(

@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/connectivity_service.dart';
 import '../services/sync_service.dart';
 import '../logging/logger_service.dart';
-import '../../firebase_options.dart';
+import '../../firebase_options.dart.bak';
 
 final loggerProvider = Provider<LoggerService>((ref) {
   return LoggerService();

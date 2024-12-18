@@ -11,10 +11,11 @@ import '../../../models/user_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
+import '../../../firebase_options.dart.bak';
 
 class AuthService {
   final FirebaseAuth _auth;
-  final GoogleSignIn _googleSignIn;
+  final GoogleSignIn _googleSignIn;  // Remove initialization here
   final FirebaseFirestore _firestore;
   final LoggerService _logger;
 
@@ -27,11 +28,11 @@ class AuthService {
     FirebaseFirestore? firestore,
     LoggerService? logger,
   })  : _auth = auth ?? FirebaseAuth.instance,
-        _googleSignIn = googleSignIn ??
-            GoogleSignIn(
-              scopes: ['email'],
-              signInOption: SignInOption.standard,
-            ),
+        _googleSignIn = googleSignIn ?? GoogleSignIn(
+          scopes: ['email'],
+          signInOption: SignInOption.standard,
+          clientId: DefaultFirebaseOptions.currentPlatform.androidClientId,
+        ),
         _firestore = firestore ?? FirebaseFirestore.instance,
         _logger = logger ?? LoggerService();
 
@@ -75,24 +76,23 @@ class AuthService {
         return null;
       }
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
       try {
+        final GoogleSignInAuthentication googleAuth =
+            await googleUser.authentication;
+
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+
         final userCredential = await _auth.signInWithCredential(credential);
+        if (userCredential.user == null) throw Exception('Failed to get user');
+
+        await _clearGuestSession();
         return await _createOrUpdateUser(userCredential.user!);
-      } on FirebaseAuthException catch (e) {
-        if (e.code == 'account-exists-with-different-credential') {
-          throw FirebaseAuthException(
-            code: 'account-exists',
-            message:
-                'An account already exists with this email. Please sign in with your original method.',
-          );
-        }
+      } catch (e) {
+        _logger.severe('Error during Google authentication', e);
+        await _googleSignIn.signOut(); // Clean up on error
         rethrow;
       }
     } catch (e) {
