@@ -1,0 +1,15 @@
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/fftcg_card_icon.png"
+  min_sdk_android: 23
+  remove_alpha_ios: true
+  background_color: "#1A1A1A"  # Dark background color
+  web:
+    generate: false
+  windows:
+    generate: false
+  macos:
+    generate: false
+  linux:
+    generate: false

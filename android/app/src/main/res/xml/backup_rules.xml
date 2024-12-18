@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="WebView.xml"/>
+    <exclude domain="database" path="google_app_measurement.db"/>
+    <exclude domain="database" path="google_app_measurement_local.db"/>
+    <exclude domain="root" path="gcm_key"/>
+    <include domain="sharedpref" path="."/>
+    <exclude domain="sharedpref" path="device.xml"/>
+</full-backup-content>
