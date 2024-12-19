@@ -21,32 +21,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _initialize();
   }
 
-  void _initialize() {
-    _authStateSubscription?.cancel();
-    _authStateSubscription = _authRepository.authStateChanges.listen(
-      (user) async {
-        if (user != null && user.isGuest) {
-          state = AuthState(status: AuthStatus.guest, user: user);
-        } else if (user != null) {
-          state = AuthState(status: AuthStatus.authenticated, user: user);
-        } else {
-          state = const AuthState(status: AuthStatus.unauthenticated);
-        }
-      },
-      onError: (error, stackTrace) {
-        _logger.severe('Auth state change error', error, stackTrace);
-        state = const AuthState(status: AuthStatus.error);
-      },
-    );
-  }
-
   Future<void> signInWithGoogle() async {
     try {
       state = const AuthState(status: AuthStatus.loading);
       _logger.info('Attempting Google sign in');
 
-      await _authRepository.signInWithGoogle();
-      _logger.info('Google sign in completed successfully');
+      final user = await _authRepository.signInWithGoogle();
+      if (user != null) {
+        state = AuthState(
+          status: AuthStatus.authenticated,
+          user: user,
+        );
+        _logger.info('Google sign in completed successfully');
+      } else {
+        state = const AuthState(status: AuthStatus.unauthenticated);
+        _logger.warning('Google sign in completed but no user returned');
+      }
     } catch (e, stackTrace) {
       _logger.severe('Error signing in with Google', e, stackTrace);
       state = const AuthState(status: AuthStatus.unauthenticated);
@@ -175,5 +165,28 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _logger.info('Disposing AuthNotifier');
     _authStateSubscription?.cancel();
     super.dispose();
+  }
+
+  void _initialize() {
+    _logger.info('Initializing auth state listener');
+    _authStateSubscription?.cancel();
+    _authStateSubscription = _authRepository.authStateChanges.listen(
+      (user) async {
+        _logger.info('Auth state changed: ${user?.id}');
+        if (user != null) {
+          if (user.isGuest) {
+            state = AuthState(status: AuthStatus.guest, user: user);
+          } else {
+            state = AuthState(status: AuthStatus.authenticated, user: user);
+          }
+        } else {
+          state = const AuthState(status: AuthStatus.unauthenticated);
+        }
+      },
+      onError: (error, stackTrace) {
+        _logger.severe('Auth state change error', error, stackTrace);
+        state = const AuthState(status: AuthStatus.error);
+      },
+    );
   }
 }

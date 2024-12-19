@@ -89,6 +89,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
 
@@ -98,20 +99,13 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
       AuthStatus.authenticated ||
       AuthStatus.guest =>
         CardsScreen(handleLogout: _handleLogout),
-      AuthStatus.unauthenticated || AuthStatus.error => const LoginScreen(),
-      AuthStatus.loading || AuthStatus.initial => FutureBuilder(
-          future: Future.delayed(const Duration(seconds: 3)), // Add timeout
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.done) {
-              // If still in initial/loading state after timeout, show login
-              return const LoginScreen();
-            }
-            return const Scaffold(
-              body: Center(
-                child: CircularProgressIndicator(),
-              ),
-            );
-          },
+      AuthStatus.unauthenticated => const LoginScreen(),
+      AuthStatus.loading => const Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        ),
+      AuthStatus.error => const LoginScreen(),
+      AuthStatus.initial => const Scaffold(
+          body: Center(child: CircularProgressIndicator()),
         ),
     };
   }

@@ -144,12 +144,13 @@ Future<void> _initializeFirebase(LoggerService logger) async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Initialize App Check with debug token in debug mode
+    // Activate App Check with debug provider in debug mode
     await FirebaseAppCheck.instance.activate(
-      // Use debug provider in debug mode
+      // Use debug provider for Android in debug mode
       androidProvider:
           kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-      appleProvider: AppleProvider.appAttest,
+      // Use debug provider for iOS in debug mode
+      appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
     );
 
     logger.info('Firebase initialized successfully');
@@ -170,30 +171,46 @@ class FFTCGCompanionApp extends ConsumerWidget {
       title: 'FFTCG Companion',
       theme: AppTheme.darkTheme,
       initialRoute: '/',
-      routes: {
-        '/': (context) => const DoubleBackWrapper(child: AuthWrapper()),
-        '/cards': (context) => const DoubleBackWrapper(child: CardsScreen()),
-        '/collection': (context) =>
-            const DoubleBackWrapper(child: CollectionScreen()),
-        '/decks': (context) => const DoubleBackWrapper(child: DecksScreen()),
-        '/scanner': (context) =>
-            const DoubleBackWrapper(child: ScannerScreen()),
-        '/profile': (context) =>
-            const DoubleBackWrapper(child: ProfileScreen()),
-        '/settings': (context) =>
-            const DoubleBackWrapper(child: SettingsScreen()),
+      onGenerateRoute: (settings) {
+        Widget page;
+        switch (settings.name) {
+          case '/':
+            page = const AuthWrapper();
+            break;
+          case '/cards':
+            page = const CardsScreen();
+            break;
+          case '/collection':
+            page = const CollectionScreen();
+            break;
+          case '/decks':
+            page = const DecksScreen();
+            break;
+          case '/scanner':
+            page = const ScannerScreen();
+            break;
+          case '/profile':
+            page = const ProfileScreen();
+            break;
+          case '/settings':
+            page = const SettingsScreen();
+            break;
+          default:
+            page = const AuthWrapper();
+        }
+
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (context) => DoubleBackWrapper(child: page),
+        );
       },
       builder: (context, child) {
-        // Handle null child
         if (child == null) {
           return const Material(
-            child: Center(
-              child: Text('Loading...'),
-            ),
+            child: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // Wrap the child with error handling
         return Material(
           child: Column(
             children: [
@@ -229,37 +246,46 @@ class DoubleBackWrapper extends StatefulWidget {
 class _DoubleBackWrapperState extends State<DoubleBackWrapper> {
   DateTime? _lastBackPressTime;
 
+  bool get _isRootRoute {
+    final NavigatorState? navigator = Navigator.maybeOf(context);
+    return navigator == null || !navigator.canPop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (bool didPop, dynamic result) {
-        if (didPop) {
-          return;
-        }
+      onPopInvokedWithResult: (bool didPop, bool? result) async {
+        if (didPop) return;
 
         final NavigatorState navigator = Navigator.of(context);
+
+        // If we can pop the current route, just do that
         if (navigator.canPop()) {
           navigator.pop();
           return;
         }
 
-        final DateTime now = DateTime.now();
-        if (_lastBackPressTime == null ||
-            now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
-          _lastBackPressTime = now;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Press back again to exit'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-          return;
+        // Only handle double-back to exit on root route
+        if (_isRootRoute) {
+          final now = DateTime.now();
+          if (_lastBackPressTime == null ||
+              now.difference(_lastBackPressTime!) >
+                  const Duration(seconds: 2)) {
+            _lastBackPressTime = now;
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(
+                const SnackBar(
+                  content: Text('Press back again to exit'),
+                  duration: Duration(seconds: 2),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            return;
+          }
+          await SystemNavigator.pop();
         }
-
-        // Allow the system to handle the back press
-        SystemNavigator.pop();
-        return;
       },
       child: widget.child,
     );

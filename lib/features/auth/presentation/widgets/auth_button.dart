@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 class AuthButton extends StatelessWidget {
   final String text;
-  final VoidCallback onPressed;
+  final void Function()?
+      onPressed; // Changed from VoidCallback to void Function()?
   final bool isLoading;
   final bool isOutlined;
 

@@ -9,24 +9,38 @@ import '../widgets/settings_switch_tile.dart';
 import '../screens/offline_management_screen.dart';
 import '../../providers/settings_providers.dart';
 
+// In settings_screen.dart
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
-      body: ListView(
-        children: const [
-          _ThemeSection(),
-          Divider(),
-          _AccountSection(),
-          _PreferencesSection(),
-          Divider(),
-          _OfflineSection(),
-        ],
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (bool didPop, dynamic result) {
+        if (didPop) {
+          return;
+        }
+        Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Settings'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: ListView(
+          children: const [
+            _ThemeSection(),
+            Divider(),
+            _AccountSection(),
+            _PreferencesSection(),
+            Divider(),
+            _OfflineSection(),
+          ],
+        ),
       ),
     );
   }
@@ -150,14 +164,16 @@ class _AccountSection extends ConsumerWidget {
           subtitle: const Text('Add another sign-in method'),
           onTap: () async {
             try {
+              // Pop the current screen before showing success message
               await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const AccountLinkingScreen(),
                 ),
               );
-              // Show success message if linking was successful
+
               if (context.mounted) {
+                Navigator.pop(context); // Pop the settings screen
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Account linked successfully'),

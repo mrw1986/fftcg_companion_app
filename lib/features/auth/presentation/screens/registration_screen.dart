@@ -26,6 +26,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
   final _confirmPasswordController = TextEditingController();
   final _logger = LoggerService();
   bool _isLoading = false;
+  bool _isInputEnabled = true;
 
   @override
   void initState() {
@@ -42,96 +43,137 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
     super.dispose();
   }
 
-  String _getReadableAuthError(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'email-already-in-use':
-        return 'An account already exists with this email. Please sign in or use a different email.';
-      case 'invalid-email':
-        return 'Please enter a valid email address.';
-      case 'operation-not-allowed':
-        return 'This sign-in method is not enabled. Please contact support.';
-      case 'weak-password':
-        return 'Please choose a stronger password.';
-      case 'network-request-failed':
-        return 'Network error. Please check your connection and try again.';
-      default:
-        return e.message ?? 'An error occurred. Please try again.';
+  void _handleError(FirebaseAuthException e) {
+    if (!mounted) return;
+
+    final errorMessage = ref.read(authServiceProvider).getReadableAuthError(e);
+    _logger.severe('Firebase Auth Error: ${e.message}', e);
+
+    if (e.code == 'too-many-requests') {
+      setState(() => _isInputEnabled = false);
+      Future.delayed(const Duration(minutes: 5), () {
+        if (mounted) {
+          setState(() => _isInputEnabled = true);
+        }
+      });
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(errorMessage),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   Future<void> _handleRegistration() async {
-    if (_formKey.currentState?.validate() ?? false) {
-      setState(() => _isLoading = true);
+    if (_formKey.currentState == null || !_formKey.currentState!.validate()) {
+      return;
+    }
+    if (_isLoading || !_isInputEnabled) return;
 
-      try {
-        _logger.info('Attempting registration for: ${_emailController.text}');
+    setState(() => _isLoading = true);
 
-        final result = await ref
-            .read(authNotifierProvider.notifier)
-            .registerWithEmailPassword(
-              _emailController.text.trim(),
-              _passwordController.text,
-              _displayNameController.text.trim(),
-            );
+    try {
+      _logger.info('Attempting registration for: ${_emailController.text}');
 
-        if (!mounted) return;
+      final result = await ref
+          .read(authNotifierProvider.notifier)
+          .registerWithEmailPassword(
+            _emailController.text.trim(),
+            _passwordController.text,
+            _displayNameController.text.trim(),
+          );
 
-        if (result == null) {
-          await showDialog(
-            context: context,
-            builder: (context) => AccountExistsDialog(
-              email: _emailController.text,
-              onLogin: () {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(
-                    builder: (context) => const LoginScreen(),
+      if (!mounted) return;
+
+      if (result == null) {
+        // Show account exists dialog
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AccountExistsDialog(
+            email: _emailController.text,
+            onLogin: () {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => const LoginScreen(),
+                ),
+              );
+            },
+            onLink: () {
+              final currentUser = ref.read(authNotifierProvider).user;
+              if (currentUser?.isGuest ?? true) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please sign in first to link accounts'),
+                    behavior: SnackBarBehavior.floating,
                   ),
                 );
-              },
-              onLink: () {
-                final currentUser = ref.read(authNotifierProvider).user;
-                if (currentUser?.isGuest ?? true) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please sign in first to link accounts'),
-                    ),
-                  );
-                  return;
-                }
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const AccountLinkingScreen(),
-                  ),
-                );
-              },
+                return;
+              }
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const AccountLinkingScreen(),
+                ),
+              );
+            },
+          ),
+        );
+      } else {
+        // Registration successful, show verification email sent message
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => const LoginScreen(),
             ),
           );
-        }
-      } on FirebaseAuthException catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(_getReadableAuthError(e)),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      } catch (e, stackTrace) {
-        _logger.severe('Unexpected error during registration', e, stackTrace);
-        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('An unexpected error occurred. Please try again.'),
+              content: Text(
+                'Account created! Please check your email to verify your account.',
+              ),
+              duration: Duration(seconds: 5),
               behavior: SnackBarBehavior.floating,
             ),
           );
         }
-      } finally {
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
+      }
+    } on FirebaseAuthException catch (e) {
+      _handleError(e);
+    } catch (e, stackTrace) {
+      _logger.severe('Unexpected error during registration', e, stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Registration error: ${e.toString()}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
+  }
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter a password';
+    }
+    if (value.length < 6) {
+      return 'Password must be at least 6 characters';
+    }
+    if (!value.contains(RegExp(r'[A-Z]'))) {
+      return 'Password must contain at least one uppercase letter';
+    }
+    if (!value.contains(RegExp(r'[0-9]'))) {
+      return 'Password must contain at least one number';
+    }
+    return null;
   }
 
   @override
@@ -154,9 +196,13 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                 AuthTextField(
                   controller: _displayNameController,
                   label: 'Display Name',
+                  enabled: _isInputEnabled && !isLoading,
                   validator: (value) {
                     if (value?.isEmpty ?? true) {
                       return 'Please enter a display name';
+                    }
+                    if (value!.length < 3) {
+                      return 'Display name must be at least 3 characters';
                     }
                     return null;
                   },
@@ -164,6 +210,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                 AuthTextField(
                   controller: _emailController,
                   label: 'Email',
+                  enabled: _isInputEnabled && !isLoading,
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
                     if (value?.isEmpty ?? true) {
@@ -179,20 +226,14 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                 AuthTextField(
                   controller: _passwordController,
                   label: 'Password',
+                  enabled: _isInputEnabled && !isLoading,
                   isPassword: true,
-                  validator: (value) {
-                    if (value?.isEmpty ?? true) {
-                      return 'Please enter a password';
-                    }
-                    if (value!.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
-                    return null;
-                  },
+                  validator: _validatePassword,
                 ),
                 AuthTextField(
                   controller: _confirmPasswordController,
                   label: 'Confirm Password',
+                  enabled: _isInputEnabled && !isLoading,
                   isPassword: true,
                   validator: (value) {
                     if (value?.isEmpty ?? true) {
@@ -207,9 +248,22 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                 const SizedBox(height: 24),
                 AuthButton(
                   text: 'Create Account',
-                  onPressed: isLoading ? () {} : _handleRegistration,
+                  onPressed: _isInputEnabled && !isLoading
+                      ? () => _handleRegistration()
+                      : null,
                   isLoading: isLoading,
                 ),
+                if (!_isInputEnabled)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16.0),
+                    child: Text(
+                      'Registration temporarily disabled. Please try again later.',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
               ],
             ),
           ),

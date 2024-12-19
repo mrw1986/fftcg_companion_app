@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../repositories/auth_repository.dart';
 import '../enums/auth_status.dart'; // Added missing import
+import '../services/auth_service.dart';
 import 'auth_notifier.dart';
 import 'auth_state.dart';
 
@@ -21,4 +22,8 @@ final authStatusProvider = Provider<AuthStatus>((ref) {
 
 final currentUserProvider = Provider((ref) {
   return ref.watch(authNotifierProvider).user;
+});
+
+final authServiceProvider = Provider<AuthService>((ref) {
+  return AuthService();
 });

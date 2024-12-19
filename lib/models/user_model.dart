@@ -58,8 +58,6 @@ class UserModel {
     };
   }
 
-  String toJson() => json.encode(toMap());
-
   factory UserModel.fromJson(String jsonString) {
     final Map<String, dynamic> data = json.decode(jsonString);
     return UserModel(
@@ -69,8 +67,25 @@ class UserModel {
       photoURL: data['photoURL'],
       isGuest: data['isGuest'] ?? false,
       isEmailVerified: data['isEmailVerified'] ?? false,
-      createdAt: DateTime.parse(data['createdAt']),
-      lastLoginAt: DateTime.parse(data['lastLoginAt']),
+      createdAt: data['createdAt'] != null
+          ? DateTime.parse(data['createdAt'])
+          : DateTime.now(),
+      lastLoginAt: data['lastLoginAt'] != null
+          ? DateTime.parse(data['lastLoginAt'])
+          : DateTime.now(),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'email': email,
+      'displayName': displayName,
+      'photoURL': photoURL,
+      'isGuest': isGuest,
+      'isEmailVerified': isEmailVerified,
+      'createdAt': createdAt.toIso8601String(),
+      'lastLoginAt': lastLoginAt.toIso8601String(),
+    };
   }
 }

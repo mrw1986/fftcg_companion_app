@@ -1,4 +1,5 @@
 // lib/features/auth/presentation/screens/login_screen.dart
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import '../../providers/auth_providers.dart';
 import '../widgets/auth_button.dart';
 import '../widgets/auth_text_field.dart';
 import '../../../../core/logging/logger_service.dart';
+import '../widgets/email_verification_dialog.dart';
 import 'registration_screen.dart';
 import '../../../settings/presentation/screens/logs_viewer_screen.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
@@ -24,6 +26,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
   final _logger = LoggerService();
   bool _isLoading = false;
+  bool _isInputEnabled = true;
 
   @override
   void initState() {
@@ -38,90 +41,109 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  String _getReadableAuthError(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'invalid-credential':
-        return 'Invalid email or password. Please try again.';
-      case 'user-disabled':
-        return 'This account has been disabled. Please contact support.';
-      case 'user-not-found':
-        return 'No account found with this email. Please check your email or create an account.';
-      case 'wrong-password':
-        return 'Incorrect password. Please try again or use "Forgot Password?".';
-      case 'invalid-email':
-        return 'Please enter a valid email address.';
-      case 'network-request-failed':
-        return 'Network error. Please check your connection and try again.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please try again later.';
-      case 'account-exists-with-different-credential':
-        return 'An account already exists with Google Sign-In. Please use Google Sign-In instead.';
-      default:
-        return e.message ?? 'An error occurred. Please try again.';
+  void _handleError(FirebaseAuthException e) {
+    if (!mounted) return;
+
+    final errorMessage = ref.read(authServiceProvider).getReadableAuthError(e);
+    _logger.severe('Firebase Auth Error: ${e.message}', e);
+
+    if (e.code == 'too-many-requests') {
+      setState(() => _isInputEnabled = false);
+      Future.delayed(const Duration(minutes: 5), () {
+        if (mounted) {
+          setState(() => _isInputEnabled = true);
+        }
+      });
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(errorMessage),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+        action: e.code == 'too-many-requests' || e.code == 'wrong-password'
+            ? SnackBarAction(
+                label: 'Reset Password',
+                onPressed: () => _handlePasswordReset(),
+              )
+            : null,
+      ),
+    );
   }
 
   Future<void> _handleEmailLogin() async {
-    if (_formKey.currentState?.validate() ?? false) {
-      setState(() => _isLoading = true);
+    if (_formKey.currentState == null || !_formKey.currentState!.validate()) {
+      return;
+    }
+    if (_isLoading || !_isInputEnabled) return;
 
-      try {
-        _logger.info('Attempting email login for: ${_emailController.text}');
-        await ref.read(authNotifierProvider.notifier).signInWithEmailPassword(
-              _emailController.text.trim(),
-              _passwordController.text,
-            );
-      } on FirebaseAuthException catch (e) {
-        _logger.severe('Firebase Auth Error: ${e.message}', e);
-        if (!mounted) return;
+    setState(() => _isLoading = true);
 
-        // This SnackBar can't be const because _getReadableAuthError(e) is dynamic
+    try {
+      _logger.info('Attempting email login for: ${_emailController.text}');
+      await ref.read(authNotifierProvider.notifier).signInWithEmailPassword(
+            _emailController.text.trim(),
+            _passwordController.text,
+          );
+
+      // Check if email is verified
+      final user = ref.read(currentUserProvider);
+      if (user != null && !user.isEmailVerified) {
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => EmailVerificationDialog(
+              email: user.email ?? '',
+            ),
+          );
+          // Sign out the unverified user
+          await ref.read(authNotifierProvider.notifier).signOut();
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_getReadableAuthError(e)),
+            content:
+                Text(ref.read(authServiceProvider).getReadableAuthError(e)),
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
           ),
         );
-      } catch (e, stackTrace) {
-        _logger.severe('Email login failed', e, stackTrace);
-        if (!mounted) return;
-
-        // This SnackBar can be const because all its properties are constant
+      }
+    } catch (e, stackTrace) {
+      _logger.severe('Email login failed', e, stackTrace);
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('An unexpected error occurred. Please try again.'),
+          SnackBar(
+            content: Text('Login error: ${e.toString()}'),
             behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 4),
           ),
         );
-      } finally {
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
 
   Future<void> _handleGoogleLogin() async {
+    if (_isLoading || !_isInputEnabled) return;
     setState(() => _isLoading = true);
 
     try {
       _logger.info('Attempting Google sign-in');
       await ref.read(authNotifierProvider.notifier).signInWithGoogle();
     } on FirebaseAuthException catch (e) {
-      _logger.severe('Firebase Auth Error: ${e.message}', e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_getReadableAuthError(e))),
-        );
-      }
+      _handleError(e);
     } catch (e, stackTrace) {
       _logger.severe('Google sign-in failed', e, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('An error occurred during Google sign-in'),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -133,6 +155,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _handleGuestLogin() async {
+    if (_isLoading || !_isInputEnabled) return;
     setState(() => _isLoading = true);
 
     try {
@@ -142,7 +165,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _logger.severe('Guest login failed', e, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to continue as guest')),
+          const SnackBar(
+            content: Text('Failed to continue as guest'),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } finally {
@@ -154,13 +180,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _handlePasswordReset() async {
     if (_emailController.text.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter your email address')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter your email address'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       return;
     }
+
+    setState(() => _isLoading = true);
 
     try {
       _logger.info('Attempting password reset for: ${_emailController.text}');
@@ -170,22 +199,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Password reset email sent')),
+          const SnackBar(
+            content: Text('Password reset email sent'),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } on FirebaseAuthException catch (e) {
-      _logger.severe('Password reset failed: ${e.message}', e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_getReadableAuthError(e))),
-        );
-      }
+      _handleError(e);
     } catch (e, stackTrace) {
       _logger.severe('Password reset failed', e, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to send password reset email')),
+          const SnackBar(
+            content: Text('Failed to send password reset email'),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -215,6 +249,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   AuthTextField(
                     controller: _emailController,
                     label: 'Email',
+                    enabled: _isInputEnabled && !isLoading,
                     keyboardType: TextInputType.emailAddress,
                     validator: (value) {
                       if (value?.isEmpty ?? true) {
@@ -230,6 +265,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   AuthTextField(
                     controller: _passwordController,
                     label: 'Password',
+                    enabled: _isInputEnabled && !isLoading,
                     isPassword: true,
                     validator: (value) {
                       if (value?.isEmpty ?? true) {
@@ -251,38 +287,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 24),
                   AuthButton(
                     text: 'Sign In',
-                    onPressed: isLoading ? () {} : _handleEmailLogin,
+                    onPressed: _isInputEnabled && !isLoading
+                        ? () => _handleEmailLogin()
+                        : null,
                     isLoading: isLoading,
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Or',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
                   AuthButton(
                     text: 'Continue with Google',
-                    onPressed: isLoading ? () {} : _handleGoogleLogin,
+                    onPressed: _isInputEnabled && !isLoading
+                        ? () => _handleGoogleLogin()
+                        : null,
                     isLoading: isLoading,
                     isOutlined: true,
                   ),
                   AuthButton(
                     text: 'Continue as Guest',
-                    onPressed: isLoading ? () {} : _handleGuestLogin,
+                    onPressed: _isInputEnabled && !isLoading
+                        ? () => _handleGuestLogin()
+                        : null,
                     isLoading: isLoading,
                     isOutlined: true,
                   ),
                   TextButton(
-                    onPressed: isLoading
-                        ? null
-                        : () {
+                    onPressed: _isInputEnabled && !isLoading
+                        ? () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (context) =>
                                     const RegistrationScreen(),
                               ),
                             );
-                          },
+                          }
+                        : null,
                     child: const Text('Create an Account'),
                   ),
                   if (kDebugMode)
