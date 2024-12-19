@@ -1,6 +1,8 @@
 // lib/features/settings/presentation/screens/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../auth/presentation/screens/account_linking_screen.dart';
+import '../../../auth/providers/auth_providers.dart';
 import '../widgets/theme_selector.dart';
 import '../widgets/color_picker.dart';
 import '../widgets/settings_switch_tile.dart';
@@ -20,6 +22,7 @@ class SettingsScreen extends ConsumerWidget {
         children: const [
           _ThemeSection(),
           Divider(),
+          _AccountSection(),
           _PreferencesSection(),
           Divider(),
           _OfflineSection(),
@@ -117,6 +120,63 @@ class _OfflineSection extends ConsumerWidget {
             );
           },
         ),
+      ],
+    );
+  }
+}
+
+class _AccountSection extends ConsumerWidget {
+  const _AccountSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+
+    if (user == null || user.isGuest) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            'Account',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.link),
+          title: const Text('Link Additional Account'),
+          subtitle: const Text('Add another sign-in method'),
+          onTap: () async {
+            try {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AccountLinkingScreen(),
+                ),
+              );
+              // Show success message if linking was successful
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Account linked successfully'),
+                  ),
+                );
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error linking account: ${e.toString()}'),
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                );
+              }
+            }
+          },
+        ),
+        const Divider(),
       ],
     );
   }

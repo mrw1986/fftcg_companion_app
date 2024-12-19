@@ -16,6 +16,7 @@ import 'features/decks/presentation/screens/decks_screen.dart';
 import 'features/scanner/presentation/screens/scanner_screen.dart';
 import 'features/profile/presentation/screens/profile_screen.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
+import 'package:flutter/services.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -170,13 +171,17 @@ class FFTCGCompanionApp extends ConsumerWidget {
       theme: AppTheme.darkTheme,
       initialRoute: '/',
       routes: {
-        '/': (context) => const AuthWrapper(),
-        '/cards': (context) => const CardsScreen(),
-        '/collection': (context) => const CollectionScreen(),
-        '/decks': (context) => const DecksScreen(),
-        '/scanner': (context) => const ScannerScreen(),
-        '/profile': (context) => const ProfileScreen(),
-        '/settings': (context) => const SettingsScreen(),
+        '/': (context) => const DoubleBackWrapper(child: AuthWrapper()),
+        '/cards': (context) => const DoubleBackWrapper(child: CardsScreen()),
+        '/collection': (context) =>
+            const DoubleBackWrapper(child: CollectionScreen()),
+        '/decks': (context) => const DoubleBackWrapper(child: DecksScreen()),
+        '/scanner': (context) =>
+            const DoubleBackWrapper(child: ScannerScreen()),
+        '/profile': (context) =>
+            const DoubleBackWrapper(child: ProfileScreen()),
+        '/settings': (context) =>
+            const DoubleBackWrapper(child: SettingsScreen()),
       },
       builder: (context, child) {
         // Handle null child
@@ -208,6 +213,55 @@ class FFTCGCompanionApp extends ConsumerWidget {
         );
       },
       debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+class DoubleBackWrapper extends StatefulWidget {
+  final Widget child;
+
+  const DoubleBackWrapper({super.key, required this.child});
+
+  @override
+  State<DoubleBackWrapper> createState() => _DoubleBackWrapperState();
+}
+
+class _DoubleBackWrapperState extends State<DoubleBackWrapper> {
+  DateTime? _lastBackPressTime;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) {
+        if (didPop) {
+          return;
+        }
+
+        final NavigatorState navigator = Navigator.of(context);
+        if (navigator.canPop()) {
+          navigator.pop();
+          return;
+        }
+
+        final DateTime now = DateTime.now();
+        if (_lastBackPressTime == null ||
+            now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Press back again to exit'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+
+        // Allow the system to handle the back press
+        SystemNavigator.pop();
+        return;
+      },
+      child: widget.child,
     );
   }
 }
