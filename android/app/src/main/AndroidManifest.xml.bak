@@ -12,11 +12,6 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:enableOnBackInvokedCallback="true">
         
-        <!-- Add this meta-data tag for Firebase App Check -->
-        <meta-data
-            android:name="firebase_app_check_debug_token"
-            android:value="8B:D9:9E:91:3C:D8:91:47:FF:85:3E:2E:A4:11:75:6B:F5:06:C8:F0"/>
-        
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -39,27 +34,5 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-
-        <!-- Add OAuth redirect scheme for Google Sign In -->
-        <activity 
-            android:name="com.google.android.gms.auth.api.signin.internal.SignInHubActivity"
-            android:windowSoftInputMode="stateAlwaysHidden|adjustPan"
-            android:exported="false" />
-
-        <!-- Add OAuth redirect for Google Sign In -->
-        <activity
-            android:name="com.google.android.gms.auth.api.signin.internal.SignInRedirectActivity"
-            android:exported="true"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data
-                    android:scheme="com.mrw1986.fftcg_companion_app"
-                    android:host="oauth2redirect"/>
-            </intent-filter>
-        </activity>
     </application>
 </manifest>

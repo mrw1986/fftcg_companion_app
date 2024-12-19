@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/auth_button.dart';
@@ -51,16 +52,38 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
               _passwordController.text,
             );
         if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('Successfully linked email/password account')),
+              content: Text('Successfully linked email/password account'),
+              duration: Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
           Navigator.pop(context);
         }
+      } on FirebaseAuthException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.code == 'email-already-in-use'
+                  ? 'This email is already linked to another account'
+                  : e.message ?? 'An error occurred'),
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       } catch (e) {
         if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString())),
+            SnackBar(
+              content: Text(e.toString()),
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       }

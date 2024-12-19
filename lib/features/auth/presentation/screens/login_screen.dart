@@ -73,20 +73,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             );
       } on FirebaseAuthException catch (e) {
         _logger.severe('Firebase Auth Error: ${e.message}', e);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(_getReadableAuthError(e))),
-          );
-        }
+        if (!mounted) return;
+
+        // This SnackBar can't be const because _getReadableAuthError(e) is dynamic
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_getReadableAuthError(e)),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
       } catch (e, stackTrace) {
         _logger.severe('Email login failed', e, stackTrace);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('An unexpected error occurred. Please try again.'),
-            ),
-          );
-        }
+        if (!mounted) return;
+
+        // This SnackBar can be const because all its properties are constant
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('An unexpected error occurred. Please try again.'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 4),
+          ),
+        );
       } finally {
         if (mounted) {
           setState(() => _isLoading = false);

@@ -98,7 +98,6 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                   );
                   return;
                 }
-
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => const AccountLinkingScreen(),
@@ -109,10 +108,12 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
           );
         }
       } on FirebaseAuthException catch (e) {
-        _logger.severe('Firebase Auth Error: ${e.message}', e);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(_getReadableAuthError(e))),
+            SnackBar(
+              content: Text(_getReadableAuthError(e)),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       } catch (e, stackTrace) {
@@ -121,6 +122,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('An unexpected error occurred. Please try again.'),
+              behavior: SnackBarBehavior.floating,
             ),
           );
         }

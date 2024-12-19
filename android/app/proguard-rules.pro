@@ -29,3 +29,7 @@
 
 # Google Sign In
 -keep class com.google.android.gms.auth.** { *; }
+
+# Shared Preferences
+-keep class androidx.datastore.* { *; }
+-keep class * extends androidx.datastore.preferences.* { *; }
