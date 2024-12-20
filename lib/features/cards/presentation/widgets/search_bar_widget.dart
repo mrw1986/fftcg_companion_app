@@ -1,3 +1,4 @@
+// lib/features/cards/presentation/widgets/search_bar_widget.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -126,10 +127,11 @@ class _CardSearchBarState extends ConsumerState<CardSearchBar> {
                                 )
                               : null,
                           onTap: () {
+                            final nav = Navigator.of(context);
                             _removeOverlay();
                             _searchController.clear();
                             setState(() => _isSearching = false);
-                            Navigator.of(context).push(
+                            nav.push(
                               MaterialPageRoute(
                                 builder: (context) =>
                                     CardDetailScreen(card: card),

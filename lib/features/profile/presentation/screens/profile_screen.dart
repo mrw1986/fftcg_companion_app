@@ -6,9 +6,16 @@ import '../widgets/deck_stats.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../providers/user_stats_provider.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
+import '../../../../core/presentation/widgets/app_bar_widget.dart';
+import '../../../../core/presentation/widgets/app_drawer.dart';
 
 class ProfileScreen extends ConsumerWidget {
-  const ProfileScreen({super.key});
+  final VoidCallback? handleLogout;
+
+  const ProfileScreen({
+    super.key,
+    this.handleLogout,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -16,8 +23,9 @@ class ProfileScreen extends ConsumerWidget {
     final stats = ref.watch(userStatsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
+      appBar: CommonAppBar(
+        title: 'Profile',
+        handleLogout: handleLogout,
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -31,6 +39,10 @@ class ProfileScreen extends ConsumerWidget {
             },
           ),
         ],
+      ),
+      drawer: AppDrawer(
+        currentRoute: '/profile',
+        handleLogout: handleLogout,
       ),
       body: RefreshIndicator(
         onRefresh: () async {

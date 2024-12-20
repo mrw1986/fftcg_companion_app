@@ -79,6 +79,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     setState(() => _isLoading = true);
 
+    // Store Navigator and ScaffoldMessenger before async gap
+    final navigator = Navigator.of(context);
+    final scaffold = ScaffoldMessenger.of(context);
+
     try {
       _logger.info('Attempting email login for: ${_emailController.text}');
       await ref.read(authNotifierProvider.notifier).signInWithEmailPassword(
@@ -88,39 +92,60 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       // Check if email is verified
       final user = ref.read(currentUserProvider);
+      if (!mounted) return;
+
       if (user != null && !user.isEmailVerified) {
-        if (mounted) {
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => EmailVerificationDialog(
-              email: user.email ?? '',
-            ),
-          );
-          // Sign out the unverified user
-          await ref.read(authNotifierProvider.notifier).signOut();
-        }
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => EmailVerificationDialog(
+            email: user.email ?? '',
+            onResendEmail: () async {
+              try {
+                await ref
+                    .read(authNotifierProvider.notifier)
+                    .sendEmailVerification();
+                if (!mounted) return;
+                scaffold.showSnackBar(
+                  // Use the stored ScaffoldMessenger
+                  const SnackBar(content: Text('Verification email sent')),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                scaffold.showSnackBar(
+                  // Use the stored ScaffoldMessenger
+                  SnackBar(
+                      content: Text('Failed to send verification email: $e')),
+                );
+              }
+            },
+            onCancel: () async {
+              await ref.read(authNotifierProvider.notifier).signOut();
+              if (!mounted) return;
+              navigator.pop(); // Use the stored navigator
+            },
+          ),
+        );
       }
     } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:
-                Text(ref.read(authServiceProvider).getReadableAuthError(e)),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      if (!mounted) return;
+      scaffold.showSnackBar(
+        // Use the stored ScaffoldMessenger
+        SnackBar(
+          content: Text(ref.read(authServiceProvider).getReadableAuthError(e)),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } catch (e, stackTrace) {
       _logger.severe('Email login failed', e, stackTrace);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Login error: ${e.toString()}'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      if (!mounted) return;
+      scaffold.showSnackBar(
+        // Use the stored ScaffoldMessenger
+        SnackBar(
+          content: Text('Login error: ${e.toString()}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);

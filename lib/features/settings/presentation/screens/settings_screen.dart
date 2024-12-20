@@ -1,4 +1,3 @@
-// lib/features/settings/presentation/screens/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../auth/presentation/screens/account_linking_screen.dart';
@@ -9,36 +8,47 @@ import '../widgets/settings_switch_tile.dart';
 import '../screens/offline_management_screen.dart';
 import '../../providers/settings_providers.dart';
 
-// In settings_screen.dart
 class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+  final VoidCallback? handleLogout;
+
+  const SettingsScreen({
+    super.key,
+    this.handleLogout,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return PopScope(
       canPop: true,
-      onPopInvokedWithResult: (bool didPop, dynamic result) {
-        if (didPop) {
-          return;
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.of(context).pop();
         }
-        Navigator.of(context).pop();
       },
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Settings'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
+          actions: [
+            IconButton(
+              icon: Icon(
+                ref.watch(themeModeProvider) == ThemeMode.dark
+                    ? Icons.light_mode
+                    : Icons.dark_mode,
+              ),
+              onPressed: () {
+                ref.read(settingsNotifierProvider.notifier).toggleTheme();
+              },
+            ),
+          ],
         ),
         body: ListView(
-          children: const [
-            _ThemeSection(),
-            Divider(),
-            _AccountSection(),
-            _PreferencesSection(),
-            Divider(),
-            _OfflineSection(),
+          children: [
+            const _ThemeSection(),
+            const Divider(),
+            _AccountSection(handleLogout: handleLogout),
+            const _PreferencesSection(),
+            const Divider(),
+            const _OfflineSection(),
           ],
         ),
       ),
@@ -140,13 +150,17 @@ class _OfflineSection extends ConsumerWidget {
 }
 
 class _AccountSection extends ConsumerWidget {
-  const _AccountSection();
+  final VoidCallback? handleLogout;
+
+  const _AccountSection({this.handleLogout});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
 
-    if (user == null || user.isGuest) return const SizedBox.shrink();
+    if (user == null || user.isGuest) {
+      return const SizedBox.shrink();
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -164,7 +178,6 @@ class _AccountSection extends ConsumerWidget {
           subtitle: const Text('Add another sign-in method'),
           onTap: () async {
             try {
-              // Pop the current screen before showing success message
               await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -173,7 +186,7 @@ class _AccountSection extends ConsumerWidget {
               );
 
               if (context.mounted) {
-                Navigator.pop(context); // Pop the settings screen
+                Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Account linked successfully'),
@@ -191,6 +204,11 @@ class _AccountSection extends ConsumerWidget {
               }
             }
           },
+        ),
+        ListTile(
+          leading: const Icon(Icons.logout),
+          title: const Text('Logout'),
+          onTap: handleLogout,
         ),
         const Divider(),
       ],

@@ -10,15 +10,17 @@ import '../widgets/sort_menu_button.dart';
 import '../widgets/search_bar_widget.dart';
 import '../../../../core/logging/logger_service.dart';
 import '../../providers/card_state.dart';
-import '../../../settings/presentation/screens/offline_management_screen.dart';
 import '../../../../core/presentation/widgets/app_drawer.dart';
+import '../../../../core/presentation/widgets/app_bar_widget.dart';
 
 class CardsScreen extends ConsumerStatefulWidget {
   final VoidCallback? handleLogout;
+  final bool isRootScreen;
 
   const CardsScreen({
     super.key,
     this.handleLogout,
+    this.isRootScreen = false,
   });
 
   @override
@@ -58,14 +60,16 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
     );
   }
 
+
   @override
   Widget build(BuildContext context) {
     final cardState = ref.watch(cardNotifierProvider);
     final user = ref.watch(currentUserProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Card Database'),
+      appBar: CommonAppBar(
+        title: 'Card Database',
+        handleLogout: widget.handleLogout,
         actions: [
           const SortMenuButton(),
           IconButton(
@@ -77,49 +81,6 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
           IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: _showFilterBottomSheet,
-          ),
-          PopupMenuButton(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              switch (value) {
-                case 'offline':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const OfflineManagementScreen(),
-                    ),
-                  );
-                  break;
-                case 'logout':
-                  if (widget.handleLogout != null) {
-                    widget.handleLogout!();
-                  }
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'offline',
-                child: Row(
-                  children: [
-                    Icon(Icons.offline_bolt),
-                    SizedBox(width: 8),
-                    Text('Offline Management'),
-                  ],
-                ),
-              ),
-              if (widget.handleLogout != null)
-                const PopupMenuItem(
-                  value: 'logout',
-                  child: Row(
-                    children: [
-                      Icon(Icons.logout),
-                      SizedBox(width: 8),
-                      Text('Logout'),
-                    ],
-                  ),
-                ),
-            ],
           ),
         ],
         bottom: PreferredSize(
@@ -139,7 +100,10 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
           ),
         ),
       ),
-      drawer: const AppDrawer(currentRoute: '/cards'),
+      drawer: AppDrawer(
+        currentRoute: '/cards',
+        handleLogout: widget.handleLogout,
+      ),
       body: RefreshIndicator(
         onRefresh: () => ref.read(cardNotifierProvider.notifier).refreshCards(),
         child: switch (cardState.status) {

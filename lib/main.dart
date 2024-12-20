@@ -1,14 +1,15 @@
+// lib/main.dart
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart'; // Import for SystemChannels and SystemNavigator
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/logging/logger_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/cards/providers/card_providers.dart';
 import 'firebase_options.dart.bak';
-import 'core/providers/app_providers.dart';
 import 'features/auth/presentation/auth_wrapper.dart';
 import 'features/cards/presentation/screens/cards_screen.dart';
 import 'features/collection/presentation/screens/collection_screen.dart';
@@ -16,19 +17,17 @@ import 'features/decks/presentation/screens/decks_screen.dart';
 import 'features/scanner/presentation/screens/scanner_screen.dart';
 import 'features/profile/presentation/screens/profile_screen.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
-import 'package:flutter/services.dart';
+import 'features/settings/providers/settings_providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set up error handling
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     debugPrint('Error: ${details.exception}');
     debugPrint('Stack trace: ${details.stack}');
   };
 
-  // Handle errors not caught by Flutter
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('Error: $error');
     debugPrint('Stack trace: $stack');
@@ -37,21 +36,16 @@ void main() async {
 
   try {
     final logger = LoggerService();
-
-    // Initialize SharedPreferences
     final sharedPrefs = await SharedPreferences.getInstance();
 
-    // Create ProviderContainer with overrides
     final container = ProviderContainer(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(sharedPrefs),
       ],
     );
 
-    // Initialize Firebase and App Check
     await _initializeFirebase(logger);
 
-    // Run the app with ProviderScope and ErrorWidget customization
     ErrorWidget.builder = (FlutterErrorDetails details) {
       return Material(
         child: Container(
@@ -86,7 +80,148 @@ void main() async {
   }
 }
 
-// Create a simple error screen widget
+Future<void> _initializeFirebase(LoggerService logger) async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    await FirebaseAppCheck.instance.activate(
+      androidProvider:
+          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+      appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
+    );
+
+    logger.info('Firebase initialized successfully');
+  } catch (e, stackTrace) {
+    logger.severe('Firebase initialization failed', e, stackTrace);
+    rethrow;
+  }
+}
+
+class FFTCGCompanionApp extends ConsumerWidget {
+  const FFTCGCompanionApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+
+    return MaterialApp(
+      title: 'FFTCG Companion',
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeMode,
+      home: const AuthWrapper(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+class MainTabScreen extends ConsumerStatefulWidget {
+  final VoidCallback? handleLogout;
+
+  const MainTabScreen({
+    super.key,
+    this.handleLogout,
+  });
+
+  @override
+  ConsumerState<MainTabScreen> createState() => _MainTabScreenState();
+}
+
+class _MainTabScreenState extends ConsumerState<MainTabScreen> {
+  DateTime? _lastBackPressTime;
+
+  Future<bool> _onWillPop(BuildContext context) async {
+    final now = DateTime.now();
+    if (_lastBackPressTime == null ||
+        now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+      _lastBackPressTime = now;
+      if (!mounted) return false;
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Press back again to exit'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      return false;
+    }
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 5,
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          // Use onPopInvokedWithResult
+          if (didPop) return;
+
+          final shouldPop = await _onWillPop(context);
+          if (shouldPop) {
+            await SystemChannels.platform
+                .invokeMethod('SystemNavigator.pop'); // Use SystemChannels
+          }
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('FFTCG Companion'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.settings),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => SettingsScreen(
+                        handleLogout: widget.handleLogout,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              IconButton(
+                icon: Icon(
+                  ref.watch(themeModeProvider) == ThemeMode.dark
+                      ? Icons.light_mode
+                      : Icons.dark_mode,
+                ),
+                onPressed: () {
+                  ref.read(settingsNotifierProvider.notifier).toggleTheme();
+                },
+              ),
+            ],
+            bottom: const TabBar(
+              tabs: [
+                Tab(icon: Icon(Icons.grid_view), text: 'Cards'),
+                Tab(icon: Icon(Icons.collections_bookmark), text: 'Collection'),
+                Tab(icon: Icon(Icons.style), text: 'Decks'),
+                Tab(icon: Icon(Icons.camera_alt), text: 'Scanner'),
+                Tab(icon: Icon(Icons.person), text: 'Profile'),
+              ],
+            ),
+          ),
+          body: TabBarView(
+            children: [
+              CardsScreen(handleLogout: widget.handleLogout),
+              CollectionScreen(handleLogout: widget.handleLogout),
+              DecksScreen(handleLogout: widget.handleLogout),
+              ScannerScreen(handleLogout: widget.handleLogout),
+              ProfileScreen(handleLogout: widget.handleLogout),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ErrorScreen extends StatelessWidget {
   final String error;
   final VoidCallback onRetry;
@@ -133,161 +268,6 @@ class ErrorScreen extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-Future<void> _initializeFirebase(LoggerService logger) async {
-  try {
-    // Initialize Firebase first
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-
-    // Activate App Check with debug provider in debug mode
-    await FirebaseAppCheck.instance.activate(
-      // Use debug provider for Android in debug mode
-      androidProvider:
-          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-      // Use debug provider for iOS in debug mode
-      appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
-    );
-
-    logger.info('Firebase initialized successfully');
-  } catch (e, stackTrace) {
-    logger.severe('Firebase initialization failed', e, stackTrace);
-    rethrow;
-  }
-}
-
-class FFTCGCompanionApp extends ConsumerWidget {
-  const FFTCGCompanionApp({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final appState = ref.watch(appStateProvider);
-
-    return MaterialApp(
-      title: 'FFTCG Companion',
-      theme: AppTheme.darkTheme,
-      initialRoute: '/',
-      onGenerateRoute: (settings) {
-        Widget page;
-        switch (settings.name) {
-          case '/':
-            page = const AuthWrapper();
-            break;
-          case '/cards':
-            page = const CardsScreen();
-            break;
-          case '/collection':
-            page = const CollectionScreen();
-            break;
-          case '/decks':
-            page = const DecksScreen();
-            break;
-          case '/scanner':
-            page = const ScannerScreen();
-            break;
-          case '/profile':
-            page = const ProfileScreen();
-            break;
-          case '/settings':
-            page = const SettingsScreen();
-            break;
-          default:
-            page = const AuthWrapper();
-        }
-
-        return MaterialPageRoute(
-          settings: settings,
-          builder: (context) => DoubleBackWrapper(child: page),
-        );
-      },
-      builder: (context, child) {
-        if (child == null) {
-          return const Material(
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        return Material(
-          child: Column(
-            children: [
-              if (appState.isOnline == false)
-                Container(
-                  color: Colors.red,
-                  padding: const EdgeInsets.all(4),
-                  child: const Text(
-                    'Offline Mode',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              Expanded(child: child),
-            ],
-          ),
-        );
-      },
-      debugShowCheckedModeBanner: false,
-    );
-  }
-}
-
-class DoubleBackWrapper extends StatefulWidget {
-  final Widget child;
-
-  const DoubleBackWrapper({super.key, required this.child});
-
-  @override
-  State<DoubleBackWrapper> createState() => _DoubleBackWrapperState();
-}
-
-class _DoubleBackWrapperState extends State<DoubleBackWrapper> {
-  DateTime? _lastBackPressTime;
-
-  bool get _isRootRoute {
-    final NavigatorState? navigator = Navigator.maybeOf(context);
-    return navigator == null || !navigator.canPop();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, bool? result) async {
-        if (didPop) return;
-
-        final NavigatorState navigator = Navigator.of(context);
-
-        // If we can pop the current route, just do that
-        if (navigator.canPop()) {
-          navigator.pop();
-          return;
-        }
-
-        // Only handle double-back to exit on root route
-        if (_isRootRoute) {
-          final now = DateTime.now();
-          if (_lastBackPressTime == null ||
-              now.difference(_lastBackPressTime!) >
-                  const Duration(seconds: 2)) {
-            _lastBackPressTime = now;
-            ScaffoldMessenger.of(context)
-              ..hideCurrentSnackBar()
-              ..showSnackBar(
-                const SnackBar(
-                  content: Text('Press back again to exit'),
-                  duration: Duration(seconds: 2),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            return;
-          }
-          await SystemNavigator.pop();
-        }
-      },
-      child: widget.child,
     );
   }
 }

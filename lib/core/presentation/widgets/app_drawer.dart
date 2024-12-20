@@ -4,10 +4,12 @@ import '../../../features/auth/providers/auth_providers.dart';
 
 class AppDrawer extends ConsumerWidget {
   final String currentRoute;
+  final VoidCallback? handleLogout; // Add this
 
   const AppDrawer({
     super.key,
     required this.currentRoute,
+    this.handleLogout, // Add this
   });
 
   @override
@@ -49,7 +51,7 @@ class AppDrawer extends ConsumerWidget {
             isSelected: currentRoute == '/scanner',
           ),
           const Divider(),
-          if (user != null && !user.isGuest) // Fixed null check
+          if (user != null && !user.isGuest)
             _buildNavigationItem(
               context: context,
               title: 'Profile',
@@ -72,8 +74,8 @@ class AppDrawer extends ConsumerWidget {
   Widget _buildHeader(WidgetRef ref) {
     final user = ref.watch(authNotifierProvider).user;
     final email = user?.email ?? '';
-    final displayName = user?.displayName ??
-        'User ${user?.id.substring(0, 4) ?? ''}'; // Changed uid to id
+    final displayName =
+        user?.displayName ?? 'User ${user?.id.substring(0, 4) ?? ''}';
 
     return UserAccountsDrawerHeader(
       currentAccountPicture: CircleAvatar(
@@ -88,7 +90,7 @@ class AppDrawer extends ConsumerWidget {
     );
   }
 
-Widget _buildNavigationItem({
+  Widget _buildNavigationItem({
     required BuildContext context,
     required String title,
     required IconData icon,
@@ -108,9 +110,20 @@ Widget _buildNavigationItem({
       ),
       selected: isSelected,
       onTap: () {
-        Navigator.pushReplacementNamed(context, route);
+        if (route == '/cards') {
+          Navigator.pushReplacementNamed(
+            context,
+            route,
+            arguments: handleLogout,
+          );
+        } else {
+          Navigator.pushReplacementNamed(
+            context,
+            route,
+            arguments: handleLogout,
+          );
+        }
       },
     );
   }
-
 }

@@ -66,4 +66,10 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       persistSort: value,
     );
   }
+
+  void toggleTheme() {
+    final newMode =
+        state.themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    setThemeMode(newMode);
+  }
 }
