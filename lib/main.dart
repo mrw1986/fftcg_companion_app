@@ -146,6 +146,11 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
   DateTime? _lastBackPressTime;
 
   Future<bool> _onWillPop() async {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return false;
+    }
+
     final now = DateTime.now();
     if (_lastBackPressTime == null ||
         now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
@@ -177,21 +182,14 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
     );
   }
 
-  void _toggleTheme() {
-    ref.read(settingsNotifierProvider.notifier).toggleTheme();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isDarkMode = ref.watch(themeModeProvider) == ThemeMode.dark;
-
     return DefaultTabController(
       length: 5,
       child: PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, result) async {
           if (didPop) return;
-
           final shouldPop = await _onWillPop();
           if (shouldPop) {
             await SystemNavigator.pop();
@@ -205,29 +203,44 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
                 icon: const Icon(Icons.settings),
                 onPressed: _navigateToSettings,
               ),
-              IconButton(
-                icon: Icon(
-                  isDarkMode ? Icons.light_mode : Icons.dark_mode,
-                ),
-                onPressed: _toggleTheme,
-              ),
             ],
-            bottom: const TabBar(
-              tabs: [
-                Tab(icon: Icon(Icons.grid_view), text: 'Cards'),
-                Tab(icon: Icon(Icons.collections_bookmark), text: 'Collection'),
-                Tab(icon: Icon(Icons.style), text: 'Decks'),
-                Tab(icon: Icon(Icons.camera_alt), text: 'Scanner'),
-                Tab(icon: Icon(Icons.person), text: 'Profile'),
+            bottom: TabBar(
+              isScrollable: true,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontSize: 14,
+                  ),
+              tabAlignment: TabAlignment.start,
+              tabs: const [
+                Tab(
+                  icon: Icon(Icons.grid_view),
+                  text: 'Cards',
+                ),
+                Tab(
+                  icon: Icon(Icons.collections_bookmark),
+                  text: 'Collection',
+                ),
+                Tab(
+                  icon: Icon(Icons.style),
+                  text: 'Decks',
+                ),
+                Tab(
+                  icon: Icon(Icons.camera_alt),
+                  text: 'Scanner',
+                ),
+                Tab(
+                  icon: Icon(Icons.person),
+                  text: 'Profile',
+                ),
               ],
             ),
           ),
           body: TabBarView(
             children: [
               CardsScreen(handleLogout: widget.handleLogout),
-              CollectionScreen(handleLogout: widget.handleLogout),
-              DecksScreen(handleLogout: widget.handleLogout),
-              ScannerScreen(handleLogout: widget.handleLogout),
+              const CollectionScreen(),
+              const DecksScreen(),
+              const ScannerScreen(),
               ProfileScreen(handleLogout: widget.handleLogout),
             ],
           ),

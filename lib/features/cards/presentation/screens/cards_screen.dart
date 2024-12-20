@@ -6,12 +6,10 @@ import '../../models/card_filter_options.dart';
 import '../widgets/card_grid_item.dart';
 import '../widgets/card_list_item.dart';
 import '../widgets/filter_bottom_sheet.dart';
-import '../widgets/sort_menu_button.dart';
 import '../widgets/search_bar_widget.dart';
 import '../../../../core/logging/logger_service.dart';
 import '../../providers/card_state.dart';
 import '../../../auth/providers/auth_providers.dart';
-import '../../../settings/presentation/screens/settings_screen.dart';
 
 class CardsScreen extends ConsumerStatefulWidget {
   final VoidCallback handleLogout;
@@ -56,17 +54,6 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
         },
       ),
     );
-   }
-
-  void _navigateToSettings() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => SettingsScreen(
-          handleLogout: widget.handleLogout,
-        ),
-      ),
-    );
   }
 
   @override
@@ -75,40 +62,20 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
     final user = ref.watch(currentUserProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Card Database'),
-        actions: [
-          const SortMenuButton(),
-          IconButton(
-            icon: Icon(cardState.isGridView ? Icons.list : Icons.grid_view),
-            onPressed: () {
-              ref.read(cardNotifierProvider.notifier).toggleViewMode();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: _showFilterBottomSheet,
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: _navigateToSettings,
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(80),
-          child: Column(
-            children: [
-              const CardSearchBar(),
-              if (user != null && !user.isGuest)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: Text(
-                    'Welcome, ${user.displayName ?? 'User'}',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(80),
+        child: Column(
+          children: [
+            const CardSearchBar(),
+            if (user != null && !user.isGuest)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Text(
+                  'Welcome, ${user.displayName ?? 'User'}',
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
       body: RefreshIndicator(
@@ -165,6 +132,24 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
                       },
                     ),
         },
+      ),
+      floatingActionButton: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'view_toggle',
+            onPressed: () {
+              ref.read(cardNotifierProvider.notifier).toggleViewMode();
+            },
+            child: Icon(cardState.isGridView ? Icons.list : Icons.grid_view),
+          ),
+          const SizedBox(width: 8),
+          FloatingActionButton(
+            heroTag: 'filter',
+            onPressed: _showFilterBottomSheet,
+            child: const Icon(Icons.filter_list),
+          ),
+        ],
       ),
     );
   }
