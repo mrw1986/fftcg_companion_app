@@ -1,25 +1,35 @@
 import 'package:flutter/material.dart';
-import '../../../../core/presentation/widgets/app_drawer.dart';
-import '../../../../core/presentation/widgets/app_bar_widget.dart';
+
+import '../../../settings/presentation/screens/settings_screen.dart';
 
 class CollectionScreen extends StatelessWidget {
-  final VoidCallback? handleLogout;
+  final VoidCallback handleLogout;
 
   const CollectionScreen({
     super.key,
-    this.handleLogout,
+    required this.handleLogout,
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CommonAppBar(
-        title: 'My Collection',
-        handleLogout: handleLogout,
-      ),
-      drawer: AppDrawer(
-        currentRoute: '/collection',
-        handleLogout: handleLogout,
+      appBar: AppBar(
+        title: const Text('My Collection'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SettingsScreen(
+                    handleLogout: handleLogout,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: const Center(
         child: Text('Collection Screen - Coming Soon'),

@@ -1,6 +1,6 @@
+// lib/features/cards/presentation/screens/cards_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../auth/providers/auth_providers.dart';
 import '../../providers/card_providers.dart';
 import '../../models/card_filter_options.dart';
 import '../widgets/card_grid_item.dart';
@@ -10,17 +10,15 @@ import '../widgets/sort_menu_button.dart';
 import '../widgets/search_bar_widget.dart';
 import '../../../../core/logging/logger_service.dart';
 import '../../providers/card_state.dart';
-import '../../../../core/presentation/widgets/app_drawer.dart';
-import '../../../../core/presentation/widgets/app_bar_widget.dart';
+import '../../../auth/providers/auth_providers.dart';
+import '../../../settings/presentation/screens/settings_screen.dart';
 
 class CardsScreen extends ConsumerStatefulWidget {
-  final VoidCallback? handleLogout;
-  final bool isRootScreen;
+  final VoidCallback handleLogout;
 
   const CardsScreen({
     super.key,
-    this.handleLogout,
-    this.isRootScreen = false,
+    required this.handleLogout,
   });
 
   @override
@@ -58,8 +56,18 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
         },
       ),
     );
-  }
+   }
 
+  void _navigateToSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SettingsScreen(
+          handleLogout: widget.handleLogout,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,9 +75,8 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
     final user = ref.watch(currentUserProvider);
 
     return Scaffold(
-      appBar: CommonAppBar(
-        title: 'Card Database',
-        handleLogout: widget.handleLogout,
+      appBar: AppBar(
+        title: const Text('Card Database'),
         actions: [
           const SortMenuButton(),
           IconButton(
@@ -81,6 +88,10 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
           IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: _showFilterBottomSheet,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: _navigateToSettings,
           ),
         ],
         bottom: PreferredSize(
@@ -99,10 +110,6 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
             ],
           ),
         ),
-      ),
-      drawer: AppDrawer(
-        currentRoute: '/cards',
-        handleLogout: widget.handleLogout,
       ),
       body: RefreshIndicator(
         onRefresh: () => ref.read(cardNotifierProvider.notifier).refreshCards(),

@@ -1,9 +1,10 @@
 // lib/main.dart
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart'; // Import for SystemChannels and SystemNavigator
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/logging/logger_service.dart';
@@ -108,8 +109,20 @@ class FFTCGCompanionApp extends ConsumerWidget {
 
     return MaterialApp(
       title: 'FFTCG Companion',
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme.copyWith(
+        // Apply theme color to light theme
+        colorScheme: AppTheme.lightTheme.colorScheme.copyWith(
+          primary: ref.watch(themeColorProvider),
+          secondary: ref.watch(themeColorProvider),
+        ),
+      ),
+      darkTheme: AppTheme.darkTheme.copyWith(
+        // Apply theme color to dark theme
+        colorScheme: AppTheme.darkTheme.colorScheme.copyWith(
+          primary: ref.watch(themeColorProvider),
+          secondary: ref.watch(themeColorProvider),
+        ),
+      ),
       themeMode: themeMode,
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
@@ -118,11 +131,11 @@ class FFTCGCompanionApp extends ConsumerWidget {
 }
 
 class MainTabScreen extends ConsumerStatefulWidget {
-  final VoidCallback? handleLogout;
+  final VoidCallback handleLogout;
 
   const MainTabScreen({
     super.key,
-    this.handleLogout,
+    required this.handleLogout,
   });
 
   @override
@@ -132,7 +145,7 @@ class MainTabScreen extends ConsumerStatefulWidget {
 class _MainTabScreenState extends ConsumerState<MainTabScreen> {
   DateTime? _lastBackPressTime;
 
-  Future<bool> _onWillPop(BuildContext context) async {
+  Future<bool> _onWillPop() async {
     final now = DateTime.now();
     if (_lastBackPressTime == null ||
         now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
@@ -153,20 +166,35 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
     return true;
   }
 
+  void _navigateToSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SettingsScreen(
+          handleLogout: widget.handleLogout,
+        ),
+      ),
+    );
+  }
+
+  void _toggleTheme() {
+    ref.read(settingsNotifierProvider.notifier).toggleTheme();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = ref.watch(themeModeProvider) == ThemeMode.dark;
+
     return DefaultTabController(
       length: 5,
       child: PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, result) async {
-          // Use onPopInvokedWithResult
           if (didPop) return;
 
-          final shouldPop = await _onWillPop(context);
+          final shouldPop = await _onWillPop();
           if (shouldPop) {
-            await SystemChannels.platform
-                .invokeMethod('SystemNavigator.pop'); // Use SystemChannels
+            await SystemNavigator.pop();
           }
         },
         child: Scaffold(
@@ -175,26 +203,13 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
             actions: [
               IconButton(
                 icon: const Icon(Icons.settings),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => SettingsScreen(
-                        handleLogout: widget.handleLogout,
-                      ),
-                    ),
-                  );
-                },
+                onPressed: _navigateToSettings,
               ),
               IconButton(
                 icon: Icon(
-                  ref.watch(themeModeProvider) == ThemeMode.dark
-                      ? Icons.light_mode
-                      : Icons.dark_mode,
+                  isDarkMode ? Icons.light_mode : Icons.dark_mode,
                 ),
-                onPressed: () {
-                  ref.read(settingsNotifierProvider.notifier).toggleTheme();
-                },
+                onPressed: _toggleTheme,
               ),
             ],
             bottom: const TabBar(
