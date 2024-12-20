@@ -3,7 +3,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/logging/logger_service.dart';
@@ -30,20 +29,14 @@ class AuthService {
 
   Future<void> _checkRateLimit(String identifier) async {
     final now = DateTime.now();
-
-    // Initialize or get attempts for this identifier
     _attemptHistory[identifier] = _attemptHistory[identifier] ?? [];
     final attempts = _attemptHistory[identifier]!;
-
-    // Remove attempts older than cooldown period
     attempts
         .removeWhere((attempt) => now.difference(attempt) > _cooldownPeriod);
 
-    // Check if we're over the limit
     if (attempts.length >= _maxAttempts) {
       final oldestAttempt = attempts.first;
       final timeUntilReset = _cooldownPeriod - now.difference(oldestAttempt);
-
       throw FirebaseAuthException(
         code: 'too-many-requests',
         message:
@@ -51,20 +44,11 @@ class AuthService {
       );
     }
 
-    // Add current attempt
     attempts.add(now);
     _attemptHistory[identifier] = attempts;
   }
 
   Future<void> _verifyConnectivityAndAppCheck() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult.contains(ConnectivityResult.none)) {
-      throw FirebaseAuthException(
-        code: 'no-connection',
-        message: 'No internet connection available',
-      );
-    }
-
     if (!kDebugMode) {
       try {
         final token =
@@ -89,9 +73,13 @@ class AuthService {
       String email, String password) async {
     try {
       await _verifyConnectivityAndAppCheck();
+      await _checkRateLimit(email.toLowerCase());
 
       final userCredential = await _auth
-          .signInWithEmailAndPassword(email: email.trim(), password: password)
+          .signInWithEmailAndPassword(
+            email: email.trim(),
+            password: password,
+          )
           .timeout(_timeout);
 
       final user = userCredential.user;
@@ -102,13 +90,11 @@ class AuthService {
         );
       }
 
-      // Force refresh the user to get the latest email verification status
       await user.reload();
 
-      // Create/update the user document regardless of email verification
       final userModel = await _createOrUpdateUser(user);
+      await _clearGuestSession();
 
-      // Only check email verification after user document is created/updated
       if (!user.emailVerified) {
         await user.sendEmailVerification();
         throw FirebaseAuthException(
@@ -117,7 +103,6 @@ class AuthService {
         );
       }
 
-      await _clearGuestSession();
       return userModel;
     } catch (e) {
       _logger.severe('Error signing in with email/password', e);
@@ -169,15 +154,7 @@ class AuthService {
         lastLoginAt: timestamp,
       );
 
-      // Convert timestamps to ISO string format for JSON serialization
-      final jsonData = {
-        'id': guestUser.id,
-        'displayName': guestUser.displayName,
-        'isGuest': guestUser.isGuest,
-        'isEmailVerified': guestUser.isEmailVerified,
-        'createdAt': guestUser.createdAt.toIso8601String(),
-        'lastLoginAt': guestUser.lastLoginAt.toIso8601String(),
-      };
+      final jsonData = guestUser.toJson(); // Use toJson method
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_guestPrefsKey, jsonEncode(jsonData));
@@ -213,10 +190,7 @@ class AuthService {
   }
 
   Future<UserModel?> registerWithEmailPassword(
-    String email,
-    String password,
-    String displayName,
-  ) async {
+      String email, String password, String displayName) async {
     try {
       await _checkRateLimit(email.toLowerCase());
       await _verifyConnectivityAndAppCheck();
@@ -392,7 +366,7 @@ class AuthService {
     }
   }
 
-Future<void> linkWithGoogle() async {
+  Future<void> linkWithGoogle() async {
     try {
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
@@ -429,4 +403,67 @@ Future<void> linkWithGoogle() async {
     }
   }
 
+  Future<UserModel?> linkWithProvider(AuthCredential credential) async {
+    try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        throw FirebaseAuthException(
+          code: 'no-current-user',
+          message: 'No user is currently signed in',
+        );
+      }
+
+      try {
+        await currentUser.linkWithCredential(credential);
+        // Reload user after linking and update in Firestore
+        final updatedUser = _auth.currentUser!;
+        await updatedUser.reload();
+        return _createOrUpdateUser(updatedUser);
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'provider-already-linked') {
+          // Handle account-exists-with-different-credential edge case manually
+          return _handleExistingAccount(credential)
+              .then((_) => getCurrentUser());
+        }
+        rethrow;
+      }
+    } catch (e) {
+      _logger.severe('Error linking provider', e);
+      rethrow;
+    }
+  }
+
+  Future<bool> isProviderLinked(String providerId) async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    return user.providerData.any((info) => info.providerId == providerId);
+  }
+
+  Future<List<String>> getLinkedProviders() async {
+    final user = _auth.currentUser;
+    if (user == null) return [];
+    return user.providerData.map((info) => info.providerId).toList();
+  }
+
+  Future<UserCredential?> _handleExistingAccount(
+      AuthCredential credential) async {
+    try {
+      return await _auth.signInWithCredential(credential);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'account-exists-with-different-credential') {
+        // Handle the account-exists-with-different-credential error manually
+        final googleUser = await GoogleSignIn().signIn();
+
+        if (googleUser != null) {
+          final googleAuth = await googleUser.authentication;
+          final googleCredential = GoogleAuthProvider.credential(
+            accessToken: googleAuth.accessToken,
+            idToken: googleAuth.idToken,
+          );
+          return await _auth.signInWithCredential(googleCredential);
+        }
+      }
+      rethrow; // Re-throw the error if it's not the specific error we're handling
+    }
+  }
 }

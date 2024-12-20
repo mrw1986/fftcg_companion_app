@@ -5,7 +5,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../../cards/providers/card_providers.dart';
 
 // Constants for SharedPreferences keys
@@ -13,6 +15,32 @@ const String _themeModeKey = 'theme_mode';
 const String _themeColorKey = 'theme_color';
 const String _persistFiltersKey = 'persist_filters';
 const String _persistSortKey = 'persist_sort';
+const String _logsKey = 'app_logs';
+
+// Log entry class
+class LogEntry {
+  final String message;
+  final DateTime timestamp;
+  final String? userId;
+
+  LogEntry({
+    required this.message,
+    required this.timestamp,
+    this.userId,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'message': message,
+        'timestamp': timestamp.toIso8601String(),
+        'userId': userId,
+      };
+
+  factory LogEntry.fromJson(Map<String, dynamic> json) => LogEntry(
+        message: json['message'],
+        timestamp: DateTime.parse(json['timestamp']),
+        userId: json['userId'],
+      );
+}
 
 // Theme mode provider
 final themeModeProvider = StateProvider<ThemeMode>((ref) {
@@ -39,6 +67,52 @@ final persistSortProvider = StateProvider<bool>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
   return prefs.getBool(_persistSortKey) ?? true;
 });
+
+// App logs provider
+final logsProvider = StateNotifierProvider<LogsNotifier, List<LogEntry>>((ref) {
+  return LogsNotifier(ref);
+});
+
+// Logs notifier
+class LogsNotifier extends StateNotifier<List<LogEntry>> {
+  final Ref _ref;
+
+  LogsNotifier(this._ref) : super([]) {
+    _loadLogs();
+  }
+
+  Future<void> _loadLogs() async {
+    final prefs = _ref.watch(sharedPreferencesProvider);
+    final logsJson = prefs.getStringList(_logsKey) ?? [];
+    state = logsJson
+        .map((json) =>
+            LogEntry.fromJson(Map<String, dynamic>.from(jsonDecode(json))))
+        .toList();
+  }
+
+  Future<void> addLog(String message) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final entry = LogEntry(
+      message: message,
+      timestamp: DateTime.now(),
+      userId: user?.uid,
+    );
+
+    state = [...state, entry];
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _logsKey,
+      state.map((log) => jsonEncode(log.toJson())).toList(),
+    );
+  }
+
+  Future<void> clearLogs() async {
+    state = [];
+    final prefs = _ref.watch(sharedPreferencesProvider); // Use _ref
+    await prefs.remove(_logsKey);
+  }
+}
 
 // Settings state class
 class SettingsState {
@@ -106,6 +180,9 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
 
     state = state.copyWith(themeMode: mode);
     _ref.read(themeModeProvider.notifier).state = mode;
+    _ref
+        .read(logsProvider.notifier)
+        .addLog('Theme mode changed to: ${mode.name}');
   }
 
   Future<void> setThemeColor(Color color) async {
@@ -114,6 +191,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
 
     state = state.copyWith(themeColor: color);
     _ref.read(themeColorProvider.notifier).state = color;
+    _ref.read(logsProvider.notifier).addLog('Theme color updated');
   }
 
   Future<void> setPersistFilters(bool value) async {
@@ -132,10 +210,34 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     _ref.read(persistSortProvider.notifier).state = value;
   }
 
-  Future<void> toggleTheme() async {
-    final newMode =
-        state.themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+  Future<void> cycleThemeMode() async {
+    final currentMode = state.themeMode;
+    late final ThemeMode newMode;
+
+    switch (currentMode) {
+      case ThemeMode.system:
+        newMode = ThemeMode.light;
+        break;
+      case ThemeMode.light:
+        newMode = ThemeMode.dark;
+        break;
+      case ThemeMode.dark:
+        newMode = ThemeMode.system;
+        break;
+    }
+
     await setThemeMode(newMode);
+  }
+
+  Future<void> logout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      _ref.read(logsProvider.notifier).addLog('User logged out');
+      // Additional cleanup if needed
+    } catch (e) {
+      _ref.read(logsProvider.notifier).addLog('Logout failed: $e');
+      rethrow;
+    }
   }
 
   Future<void> resetSettings() async {
@@ -152,6 +254,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     _ref.read(themeColorProvider.notifier).state = Colors.purple;
     _ref.read(persistFiltersProvider.notifier).state = true;
     _ref.read(persistSortProvider.notifier).state = true;
+    _ref.read(logsProvider.notifier).addLog('Settings reset to defaults');
   }
 }
 
@@ -159,7 +262,6 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
 final isDarkModeProvider = Provider<bool>((ref) {
   final themeMode = ref.watch(themeModeProvider);
   if (themeMode == ThemeMode.system) {
-    // Get system brightness
     final platformDispatcher = PlatformDispatcher.instance;
     return platformDispatcher.platformBrightness == Brightness.dark;
   }
@@ -172,15 +274,9 @@ final currentThemeProvider = Provider<ThemeData>((ref) {
 
   return isDark
       ? ThemeData.dark().copyWith(
-          colorScheme: ColorScheme.dark(
-            primary: themeColor,
-            secondary: themeColor,
-          ),
-        )
+          colorScheme:
+              ColorScheme.dark(primary: themeColor, secondary: themeColor))
       : ThemeData.light().copyWith(
-          colorScheme: ColorScheme.light(
-            primary: themeColor,
-            secondary: themeColor,
-          ),
-        );
+          colorScheme:
+              ColorScheme.light(primary: themeColor, secondary: themeColor));
 });

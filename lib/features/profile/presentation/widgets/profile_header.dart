@@ -1,15 +1,19 @@
+// lib/features/profile/presentation/widgets/profile_header.dart
+
 import 'package:flutter/material.dart';
 
 class ProfileHeader extends StatelessWidget {
   final String userName;
   final String? email;
   final String? avatarUrl;
+  final Color avatarColor;
 
   const ProfileHeader({
     super.key,
     required this.userName,
     this.email,
     this.avatarUrl,
+    required this.avatarColor,
   });
 
   @override
@@ -20,11 +24,15 @@ class ProfileHeader extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 40,
+            backgroundColor: avatarColor,
             backgroundImage:
                 avatarUrl != null ? NetworkImage(avatarUrl!) : null,
             child: avatarUrl == null
-                ? Icon(Icons.person,
-                    size: 40, color: Theme.of(context).colorScheme.onPrimary)
+                ? const Icon(
+                    Icons.person,
+                    size: 40,
+                    color: Colors.white,
+                  )
                 : null,
           ),
           const SizedBox(width: 16),

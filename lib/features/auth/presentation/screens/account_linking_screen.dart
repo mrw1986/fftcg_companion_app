@@ -1,4 +1,4 @@
-import 'package:firebase_auth/firebase_auth.dart';
+// lib/features/auth/presentation/screens/account_linking_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/auth_button.dart';
@@ -18,6 +18,7 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -27,6 +28,10 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
   }
 
   Future<void> _linkWithGoogle() async {
+
+    if (_isLoading) return;
+
+    setState(() => _isLoading = true);
     try {
       await ref.read(authNotifierProvider.notifier).linkWithGoogle();
       if (mounted) {
@@ -41,51 +46,38 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
           SnackBar(content: Text(e.toString())),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _linkWithEmailPassword() async {
-    if (_formKey.currentState?.validate() ?? false) {
-      try {
-        await ref.read(authNotifierProvider.notifier).linkWithEmailPassword(
-              _emailController.text.trim(),
-              _passwordController.text,
-            );
-        if (mounted) {
-          ScaffoldMessenger.of(context).clearSnackBars();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Successfully linked email/password account'),
-              duration: Duration(seconds: 4),
-              behavior: SnackBarBehavior.floating,
-            ),
+    if (!_formKey.currentState!.validate() || _isLoading) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await ref.read(authNotifierProvider.notifier).linkWithEmailPassword(
+            _emailController.text.trim(),
+            _passwordController.text,
           );
-          Navigator.pop(context);
-        }
-      } on FirebaseAuthException catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).clearSnackBars();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(e.code == 'email-already-in-use'
-                  ? 'This email is already linked to another account'
-                  : e.message ?? 'An error occurred'),
-              duration: const Duration(seconds: 4),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).clearSnackBars();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(e.toString()),
-              duration: const Duration(seconds: 4),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Successfully linked email/password account')),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to link account: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -95,7 +87,7 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
     final authState = ref.watch(authNotifierProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Link Additional Account')),
+      appBar: AppBar(title: const Text('Link Account')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -107,9 +99,10 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
             ),
             const SizedBox(height: 24),
             AuthButton(
+              // Removed color parameter
               text: 'Link Google Account',
-              onPressed: _linkWithGoogle,
-              isLoading: authState.status == AuthStatus.loading,
+              onPressed: _isLoading ? null : _linkWithGoogle,
+              isLoading: _isLoading && authState.status == AuthStatus.loading,
             ),
             const SizedBox(height: 24),
             const Divider(),
@@ -122,6 +115,7 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
                     controller: _emailController,
                     label: 'Email',
                     keyboardType: TextInputType.emailAddress,
+                    enabled: !_isLoading,
                     validator: (value) {
                       if (value?.isEmpty ?? true) {
                         return 'Please enter your email';
@@ -136,6 +130,7 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
                   AuthTextField(
                     controller: _passwordController,
                     label: 'Password',
+                    enabled: !_isLoading,
                     isPassword: true,
                     validator: (value) {
                       if (value?.isEmpty ?? true) {
@@ -146,12 +141,13 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
                       }
                       return null;
                     },
-                  ),
+                 ),
                   const SizedBox(height: 16),
-                  AuthButton(
+                  AuthButton( // Removed color parameter
                     text: 'Link Email/Password Account',
-                    onPressed: _linkWithEmailPassword,
-                    isLoading: authState.status == AuthStatus.loading,
+                    onPressed: _isLoading ? null : _linkWithEmailPassword,
+                    isLoading:
+                        _isLoading && authState.status == AuthStatus.loading,
                   ),
                 ],
               ),

@@ -20,6 +20,7 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
     final stats = ref.watch(userStatsProvider);
+    final themeColor = Theme.of(context).colorScheme.primary; // Get theme color
 
     return Scaffold(
       appBar: AppBar(
@@ -50,6 +51,7 @@ class ProfileScreen extends ConsumerWidget {
               userName: user?.displayName ?? 'Guest User',
               email: user?.email,
               avatarUrl: user?.photoURL,
+              avatarColor: themeColor, // Pass theme color to ProfileHeader
             ),
             const Divider(),
             Padding(

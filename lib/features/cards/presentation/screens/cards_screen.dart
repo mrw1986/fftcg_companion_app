@@ -1,4 +1,5 @@
 // lib/features/cards/presentation/screens/cards_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/card_providers.dart';
@@ -7,9 +8,9 @@ import '../widgets/card_grid_item.dart';
 import '../widgets/card_list_item.dart';
 import '../widgets/filter_bottom_sheet.dart';
 import '../widgets/search_bar_widget.dart';
-import '../../../../core/logging/logger_service.dart';
 import '../../providers/card_state.dart';
 import '../../../auth/providers/auth_providers.dart';
+import '../../../settings/providers/settings_providers.dart'; // Add this import
 
 class CardsScreen extends ConsumerStatefulWidget {
   final VoidCallback handleLogout;
@@ -24,14 +25,7 @@ class CardsScreen extends ConsumerStatefulWidget {
 }
 
 class _CardsScreenState extends ConsumerState<CardsScreen> {
-  final _logger = LoggerService();
   final _scrollController = ScrollController();
-
-  @override
-  void initState() {
-    super.initState();
-    _logger.info('Cards screen initialized');
-  }
 
   @override
   void dispose() {
@@ -60,6 +54,7 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
   Widget build(BuildContext context) {
     final cardState = ref.watch(cardNotifierProvider);
     final user = ref.watch(currentUserProvider);
+    final themeColor = ref.watch(themeColorProvider); // Add this line
 
     return Scaffold(
       appBar: PreferredSize(
@@ -141,13 +136,21 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
             onPressed: () {
               ref.read(cardNotifierProvider.notifier).toggleViewMode();
             },
-            child: Icon(cardState.isGridView ? Icons.list : Icons.grid_view),
+            backgroundColor: themeColor, // Add this line
+            child: Icon(
+              cardState.isGridView ? Icons.list : Icons.grid_view,
+              color: Colors.white, // Add this line
+            ),
           ),
           const SizedBox(width: 8),
           FloatingActionButton(
             heroTag: 'filter',
             onPressed: _showFilterBottomSheet,
-            child: const Icon(Icons.filter_list),
+            backgroundColor: themeColor, // Add this line
+            child: const Icon(
+              Icons.filter_list,
+              color: Colors.white, // Add this line
+            ),
           ),
         ],
       ),
