@@ -148,11 +148,17 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
     5,
     (index) => GlobalKey<NavigatorState>(),
   );
+  int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 5, vsync: this)
+      ..addListener(() {
+        setState(() {
+          _currentIndex = _tabController.index;
+        });
+      });
   }
 
   @override
@@ -161,47 +167,51 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
     super.dispose();
   }
 
+  // Add the _navigateToSettings method here
+  void _navigateToSettings() {
+    if (context.mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => SettingsScreen(
+            handleLogout: widget.handleLogout,
+          ),
+        ),
+      );
+    }
+  }
+
   Future<bool> _onWillPop() async {
-    final currentNavigatorState =
-        _navigatorKeys[_tabController.index].currentState;
+    final currentNavigatorState = _navigatorKeys[_currentIndex].currentState;
+
     if (currentNavigatorState?.canPop() ?? false) {
       currentNavigatorState?.pop();
       return false;
     }
 
-    if (_tabController.index != 0) {
+    if (_currentIndex != 0) {
       _tabController.animateTo(0);
       return false;
     }
 
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Exit App?'),
-            content: const Text('Are you sure you want to exit?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('No'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Yes'),
-              ),
-            ],
+    final shouldPop = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Exit App?'),
+        content: const Text('Are you sure you want to exit?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('No'),
           ),
-        ) ??
-        false;
-  }
-
-  void _navigateToSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => SettingsScreen(
-          handleLogout: widget.handleLogout,
-        ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Yes'),
+          ),
+        ],
       ),
     );
+
+    return shouldPop ?? false;
   }
 
   @override
@@ -214,7 +224,6 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
         if (!didPop) {
           final shouldPop = await _onWillPop();
           if (shouldPop && context.mounted) {
-            // Use context.mounted instead of mounted
             Navigator.of(context).pop();
           }
         }
@@ -245,69 +254,41 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
                   ),
               tabAlignment: TabAlignment.start,
               tabs: const [
-                Tab(
-                  icon: Icon(Icons.grid_view),
-                  text: 'Cards',
-                ),
-                Tab(
-                  icon: Icon(Icons.collections_bookmark),
-                  text: 'Collection',
-                ),
-                Tab(
-                  icon: Icon(Icons.style),
-                  text: 'Decks',
-                ),
-                Tab(
-                  icon: Icon(Icons.camera_alt),
-                  text: 'Scanner',
-                ),
-                Tab(
-                  icon: Icon(Icons.person),
-                  text: 'Profile',
-                ),
+                Tab(icon: Icon(Icons.grid_view), text: 'Cards'),
+                Tab(icon: Icon(Icons.collections_bookmark), text: 'Collection'),
+                Tab(icon: Icon(Icons.style), text: 'Decks'),
+                Tab(icon: Icon(Icons.camera_alt), text: 'Scanner'),
+                Tab(icon: Icon(Icons.person), text: 'Profile'),
               ],
             ),
           ),
           body: TabBarView(
             controller: _tabController,
+            physics: const NeverScrollableScrollPhysics(), // Disable swipe
             children: [
-              Navigator(
-                key: _navigatorKeys[0],
-                onGenerateRoute: (settings) => MaterialPageRoute(
-                  builder: (context) =>
-                      CardsScreen(handleLogout: widget.handleLogout),
-                ),
-              ),
-              Navigator(
-                key: _navigatorKeys[1],
-                onGenerateRoute: (settings) => MaterialPageRoute(
-                  builder: (context) => const CollectionScreen(),
-                ),
-              ),
-              Navigator(
-                key: _navigatorKeys[2],
-                onGenerateRoute: (settings) => MaterialPageRoute(
-                  builder: (context) => const DecksScreen(),
-                ),
-              ),
-              Navigator(
-                key: _navigatorKeys[3],
-                onGenerateRoute: (settings) => MaterialPageRoute(
-                  builder: (context) => const ScannerScreen(),
-                ),
-              ),
-              Navigator(
-                key: _navigatorKeys[4],
-                onGenerateRoute: (settings) => MaterialPageRoute(
-                  builder: (context) => ProfileScreen(
-                    handleLogout: widget.handleLogout,
-                  ),
-                ),
-              ),
+              _buildTabNavigator(
+                  0, CardsScreen(handleLogout: widget.handleLogout)),
+              _buildTabNavigator(1, const CollectionScreen()),
+              _buildTabNavigator(2, const DecksScreen()),
+              _buildTabNavigator(3, const ScannerScreen()),
+              _buildTabNavigator(
+                  4, ProfileScreen(handleLogout: widget.handleLogout)),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildTabNavigator(int index, Widget child) {
+    return Navigator(
+      key: _navigatorKeys[index],
+      onGenerateRoute: (settings) {
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (context) => child,
+        );
+      },
     );
   }
 }
