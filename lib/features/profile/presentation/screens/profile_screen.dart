@@ -6,7 +6,6 @@ import '../widgets/collection_stats.dart';
 import '../widgets/deck_stats.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../providers/user_stats_provider.dart';
-import '../../../settings/presentation/screens/settings_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
   final VoidCallback handleLogout;
@@ -20,26 +19,11 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
     final stats = ref.watch(userStatsProvider);
-    final themeColor = Theme.of(context).colorScheme.primary; // Get theme color
+    final themeColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SettingsScreen(
-                    handleLogout: handleLogout,
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -51,7 +35,7 @@ class ProfileScreen extends ConsumerWidget {
               userName: user?.displayName ?? 'Guest User',
               email: user?.email,
               avatarUrl: user?.photoURL,
-              avatarColor: themeColor, // Pass theme color to ProfileHeader
+              avatarColor: themeColor,
             ),
             const Divider(),
             Padding(

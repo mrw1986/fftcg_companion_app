@@ -4,7 +4,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/logging/logger_service.dart';
@@ -142,38 +141,61 @@ class MainTabScreen extends ConsumerStatefulWidget {
   ConsumerState<MainTabScreen> createState() => _MainTabScreenState();
 }
 
-class _MainTabScreenState extends ConsumerState<MainTabScreen> {
-  DateTime? _lastBackPressTime;
+class _MainTabScreenState extends ConsumerState<MainTabScreen>
+    with TickerProviderStateMixin {
+  late TabController _tabController;
+  final List<GlobalKey<NavigatorState>> _navigatorKeys = List.generate(
+    5,
+    (index) => GlobalKey<NavigatorState>(),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 5, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   Future<bool> _onWillPop() async {
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+    final currentNavigatorState =
+        _navigatorKeys[_tabController.index].currentState;
+    if (currentNavigatorState?.canPop() ?? false) {
+      currentNavigatorState?.pop();
       return false;
     }
 
-    final now = DateTime.now();
-    if (_lastBackPressTime == null ||
-        now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
-      _lastBackPressTime = now;
-      if (!mounted) return false;
+    if (_tabController.index != 0) {
+      _tabController.animateTo(0);
+      return false;
+    }
 
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text('Press back again to exit'),
-            duration: Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Exit App?'),
+            content: const Text('Are you sure you want to exit?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('No'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Yes'),
+              ),
+            ],
           ),
-        );
-      return false;
-    }
-    return true;
+        ) ??
+        false;
   }
 
   void _navigateToSettings() {
-    Navigator.push(
-      context,
+    Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => SettingsScreen(
           handleLogout: widget.handleLogout,
@@ -184,17 +206,21 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 5,
-      child: PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, result) async {
-          if (didPop) return;
+    final settingsNotifier = ref.read(settingsNotifierProvider.notifier);
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (!didPop) {
           final shouldPop = await _onWillPop();
-          if (shouldPop) {
-            await SystemNavigator.pop();
+          if (shouldPop && context.mounted) {
+            // Use context.mounted instead of mounted
+            Navigator.of(context).pop();
           }
-        },
+        }
+      },
+      child: DefaultTabController(
+        length: 5,
         child: Scaffold(
           appBar: AppBar(
             title: const Text('FFTCG Companion'),
@@ -203,8 +229,15 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
                 icon: const Icon(Icons.settings),
                 onPressed: _navigateToSettings,
               ),
+              IconButton(
+                icon: Icon(ref.watch(themeModeProvider) == ThemeMode.dark
+                    ? Icons.light_mode
+                    : Icons.dark_mode),
+                onPressed: settingsNotifier.cycleThemeMode,
+              ),
             ],
             bottom: TabBar(
+              controller: _tabController,
               isScrollable: true,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -236,12 +269,41 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen> {
             ),
           ),
           body: TabBarView(
+            controller: _tabController,
             children: [
-              CardsScreen(handleLogout: widget.handleLogout),
-              const CollectionScreen(),
-              const DecksScreen(),
-              const ScannerScreen(),
-              ProfileScreen(handleLogout: widget.handleLogout),
+              Navigator(
+                key: _navigatorKeys[0],
+                onGenerateRoute: (settings) => MaterialPageRoute(
+                  builder: (context) =>
+                      CardsScreen(handleLogout: widget.handleLogout),
+                ),
+              ),
+              Navigator(
+                key: _navigatorKeys[1],
+                onGenerateRoute: (settings) => MaterialPageRoute(
+                  builder: (context) => const CollectionScreen(),
+                ),
+              ),
+              Navigator(
+                key: _navigatorKeys[2],
+                onGenerateRoute: (settings) => MaterialPageRoute(
+                  builder: (context) => const DecksScreen(),
+                ),
+              ),
+              Navigator(
+                key: _navigatorKeys[3],
+                onGenerateRoute: (settings) => MaterialPageRoute(
+                  builder: (context) => const ScannerScreen(),
+                ),
+              ),
+              Navigator(
+                key: _navigatorKeys[4],
+                onGenerateRoute: (settings) => MaterialPageRoute(
+                  builder: (context) => ProfileScreen(
+                    handleLogout: widget.handleLogout,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -262,37 +324,35 @@ class ErrorScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.error_outline,
-                  color: Colors.red,
-                  size: 48,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Error',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  error,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: onRetry,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Retry'),
-                ),
-              ],
-            ),
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Error',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                error,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
+            ],
           ),
         ),
       ),
