@@ -12,7 +12,7 @@ def flutterVersionName = project.hasProperty('flutter.versionName') ? project.ge
 android {
     namespace "com.mrw1986.fftcg_companion_app"
     compileSdkVersion flutter.compileSdkVersion
-    ndkVersion flutter.ndkVersion
+    ndkVersion = "27.0.12077973"
     buildFeatures.buildConfig = true
 
     compileOptions {

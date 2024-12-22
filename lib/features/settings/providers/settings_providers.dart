@@ -210,25 +210,6 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     _ref.read(persistSortProvider.notifier).state = value;
   }
 
-  Future<void> cycleThemeMode() async {
-    final currentMode = state.themeMode;
-    late final ThemeMode newMode;
-
-    switch (currentMode) {
-      case ThemeMode.system:
-        newMode = ThemeMode.light;
-        break;
-      case ThemeMode.light:
-        newMode = ThemeMode.dark;
-        break;
-      case ThemeMode.dark:
-        newMode = ThemeMode.system;
-        break;
-    }
-
-    await setThemeMode(newMode);
-  }
-
   Future<void> logout() async {
     try {
       await FirebaseAuth.instance.signOut();

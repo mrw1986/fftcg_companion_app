@@ -139,6 +139,16 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () async {
               try {
                 await ref.read(settingsNotifierProvider.notifier).logout();
+                if (!context.mounted) return;
+
+                // Pop all routes and replace with login screen
+                Navigator.of(context)
+                    .pushNamedAndRemoveUntil('/', (route) => false);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Successfully logged out')),
+                );
+
                 handleLogout();
               } catch (e) {
                 logger.severe('Logout failed', e);

@@ -11,6 +11,7 @@ import '../../../../core/logging/logger_service.dart';
 import '../widgets/email_verification_dialog.dart';
 import 'registration_screen.dart';
 import '../../../settings/presentation/screens/logs_viewer_screen.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter/foundation.dart' show kDebugMode;
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -27,6 +28,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _logger = LoggerService();
   bool _isLoading = false;
   bool _isInputEnabled = true;
+  DateTime? _lastBackPress; // Add this field for back press handling
 
   @override
   void initState() {
@@ -107,13 +109,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     .sendEmailVerification();
                 if (!mounted) return;
                 scaffold.showSnackBar(
-                  // Use the stored ScaffoldMessenger
                   const SnackBar(content: Text('Verification email sent')),
                 );
               } catch (e) {
                 if (!mounted) return;
                 scaffold.showSnackBar(
-                  // Use the stored ScaffoldMessenger
                   SnackBar(
                       content: Text('Failed to send verification email: $e')),
                 );
@@ -122,7 +122,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             onCancel: () async {
               await ref.read(authNotifierProvider.notifier).signOut();
               if (!mounted) return;
-              navigator.pop(); // Use the stored navigator
+              navigator.pop();
             },
           ),
         );
@@ -130,7 +130,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       scaffold.showSnackBar(
-        // Use the stored ScaffoldMessenger
         SnackBar(
           content: Text(ref.read(authServiceProvider).getReadableAuthError(e)),
           behavior: SnackBarBehavior.floating,
@@ -140,7 +139,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _logger.severe('Email login failed', e, stackTrace);
       if (!mounted) return;
       scaffold.showSnackBar(
-        // Use the stored ScaffoldMessenger
         SnackBar(
           content: Text('Login error: ${e.toString()}'),
           behavior: SnackBarBehavior.floating,
@@ -254,110 +252,133 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final authState = ref.watch(authNotifierProvider);
     final isLoading = _isLoading || authState.status == AuthStatus.loading;
 
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'FFTCG Companion',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 48),
-                  AuthTextField(
-                    controller: _emailController,
-                    label: 'Email',
-                    enabled: _isInputEnabled && !isLoading,
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (value) {
-                      if (value?.isEmpty ?? true) {
-                        return 'Please enter your email';
-                      }
-                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                          .hasMatch(value!)) {
-                        return 'Please enter a valid email';
-                      }
-                      return null;
-                    },
-                  ),
-                  AuthTextField(
-                    controller: _passwordController,
-                    label: 'Password',
-                    enabled: _isInputEnabled && !isLoading,
-                    isPassword: true,
-                    validator: (value) {
-                      if (value?.isEmpty ?? true) {
-                        return 'Please enter your password';
-                      }
-                      if (value!.length < 6) {
-                        return 'Password must be at least 6 characters';
-                      }
-                      return null;
-                    },
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: isLoading ? null : _handlePasswordReset,
-                      child: const Text('Forgot Password?'),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+
+        final now = DateTime.now();
+        if (_lastBackPress == null ||
+            now.difference(_lastBackPress!) > const Duration(seconds: 2)) {
+          _lastBackPress = now;
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Press back again to exit'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+
+        if (!mounted) return;
+        await SystemNavigator.pop(animated: true);
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'FFTCG Companion',
+                      style: Theme.of(context).textTheme.headlineMedium,
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  AuthButton(
-                    text: 'Sign In',
-                    onPressed: _isInputEnabled && !isLoading
-                        ? () => _handleEmailLogin()
-                        : null,
-                    isLoading: isLoading,
-                  ),
-                  AuthButton(
-                    text: 'Continue with Google',
-                    onPressed: _isInputEnabled && !isLoading
-                        ? () => _handleGoogleLogin()
-                        : null,
-                    isLoading: isLoading,
-                    isOutlined: true,
-                  ),
-                  AuthButton(
-                    text: 'Continue as Guest',
-                    onPressed: _isInputEnabled && !isLoading
-                        ? () => _handleGuestLogin()
-                        : null,
-                    isLoading: isLoading,
-                    isOutlined: true,
-                  ),
-                  TextButton(
-                    onPressed: _isInputEnabled && !isLoading
-                        ? () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const RegistrationScreen(),
-                              ),
-                            );
-                          }
-                        : null,
-                    child: const Text('Create an Account'),
-                  ),
-                  if (kDebugMode)
-                    IconButton(
-                      icon: const Icon(Icons.bug_report),
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const LogsViewerScreen(),
-                          ),
-                        );
+                    const SizedBox(height: 48),
+                    AuthTextField(
+                      controller: _emailController,
+                      label: 'Email',
+                      enabled: _isInputEnabled && !isLoading,
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        if (value?.isEmpty ?? true) {
+                          return 'Please enter your email';
+                        }
+                        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                            .hasMatch(value!)) {
+                          return 'Please enter a valid email';
+                        }
+                        return null;
                       },
                     ),
-                ],
+                    AuthTextField(
+                      controller: _passwordController,
+                      label: 'Password',
+                      enabled: _isInputEnabled && !isLoading,
+                      isPassword: true,
+                      validator: (value) {
+                        if (value?.isEmpty ?? true) {
+                          return 'Please enter your password';
+                        }
+                        if (value!.length < 6) {
+                          return 'Password must be at least 6 characters';
+                        }
+                        return null;
+                      },
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: isLoading ? null : _handlePasswordReset,
+                        child: const Text('Forgot Password?'),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    AuthButton(
+                      text: 'Sign In',
+                      onPressed: _isInputEnabled && !isLoading
+                          ? () => _handleEmailLogin()
+                          : null,
+                      isLoading: isLoading,
+                    ),
+                    AuthButton(
+                      text: 'Continue with Google',
+                      onPressed: _isInputEnabled && !isLoading
+                          ? () => _handleGoogleLogin()
+                          : null,
+                      isLoading: isLoading,
+                      isOutlined: true,
+                    ),
+                    AuthButton(
+                      text: 'Continue as Guest',
+                      onPressed: _isInputEnabled && !isLoading
+                          ? () => _handleGuestLogin()
+                          : null,
+                      isLoading: isLoading,
+                      isOutlined: true,
+                    ),
+                    TextButton(
+                      onPressed: _isInputEnabled && !isLoading
+                          ? () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const RegistrationScreen(),
+                                ),
+                              );
+                            }
+                          : null,
+                      child: const Text('Create an Account'),
+                    ),
+                    if (kDebugMode)
+                      IconButton(
+                        icon: const Icon(Icons.bug_report),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const LogsViewerScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

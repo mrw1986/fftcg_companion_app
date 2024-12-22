@@ -4,9 +4,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/logging/logger_service.dart';
+import 'core/providers/root_route_history_notifier.dart';
 import 'core/theme/app_theme.dart';
 import 'features/cards/providers/card_providers.dart';
 import 'firebase_options.dart.bak';
@@ -86,9 +88,12 @@ Future<void> _initializeFirebase(LoggerService logger) async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
+    // App Check initialization with debug/release providers
     await FirebaseAppCheck.instance.activate(
+      // For Android
       androidProvider:
           kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+      // For iOS
       appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
     );
 
@@ -142,92 +147,76 @@ class MainTabScreen extends ConsumerStatefulWidget {
 }
 
 class _MainTabScreenState extends ConsumerState<MainTabScreen>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final List<GlobalKey<NavigatorState>> _navigatorKeys = List.generate(
-    5,
-    (index) => GlobalKey<NavigatorState>(),
-  );
-  int _currentIndex = 0;
+  DateTime? _lastBackPress;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this)
-      ..addListener(() {
-        setState(() {
-          _currentIndex = _tabController.index;
-        });
+      ..addListener(_handleTabChange);
+  }
+
+  void _handleTabChange() {
+    if (!_tabController.indexIsChanging) {
+      ref
+          .read(rootRouteHistoryProvider.notifier)
+          .addHistory(_tabController.index);
+    }
+  }
+
+  Future<void> _handleBackNavigation(bool didPop, dynamic result) async {
+    // If the current route can pop, let it handle the back press
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+
+    // Handle tab-level navigation
+    final history = ref.read(rootRouteHistoryProvider);
+    if (history.length > 1) {
+      ref.read(rootRouteHistoryProvider.notifier).removeLastHistory();
+      setState(() {
+        _tabController.index = ref.read(rootRouteHistoryProvider).last;
       });
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  // Add the _navigateToSettings method here
-  void _navigateToSettings() {
-    if (context.mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => SettingsScreen(
-            handleLogout: widget.handleLogout,
-          ),
-        ),
-      );
-    }
-  }
-
-  Future<bool> _onWillPop() async {
-    final currentNavigatorState = _navigatorKeys[_currentIndex].currentState;
-
-    if (currentNavigatorState?.canPop() ?? false) {
-      currentNavigatorState?.pop();
-      return false;
+      return;
     }
 
-    if (_currentIndex != 0) {
-      _tabController.animateTo(0);
-      return false;
+    // Handle app exit (only when on the first/home tab)
+    if (_tabController.index == 0) {
+      final now = DateTime.now();
+      if (_lastBackPress == null ||
+          now.difference(_lastBackPress!) > const Duration(seconds: 2)) {
+        _lastBackPress = now;
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Press back again to exit'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+      await SystemNavigator.pop();
+    } else {
+      // If on any other tab, go to home tab
+      setState(() {
+        ref.read(rootRouteHistoryProvider.notifier).clearHistory();
+        _tabController.index = 0;
+      });
     }
-
-    final shouldPop = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Exit App?'),
-        content: const Text('Are you sure you want to exit?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('No'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Yes'),
-          ),
-        ],
-      ),
-    );
-
-    return shouldPop ?? false;
   }
 
   @override
   Widget build(BuildContext context) {
-    final settingsNotifier = ref.read(settingsNotifierProvider.notifier);
+    // Watch the history for rebuilds when it changes
+    ref.watch(rootRouteHistoryProvider);
 
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (bool didPop, dynamic result) async {
-        if (!didPop) {
-          final shouldPop = await _onWillPop();
-          if (shouldPop && context.mounted) {
-            Navigator.of(context).pop();
-          }
-        }
-      },
+      onPopInvokedWithResult: _handleBackNavigation,
       child: DefaultTabController(
         length: 5,
         child: Scaffold(
@@ -236,13 +225,15 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
             actions: [
               IconButton(
                 icon: const Icon(Icons.settings),
-                onPressed: _navigateToSettings,
-              ),
-              IconButton(
-                icon: Icon(ref.watch(themeModeProvider) == ThemeMode.dark
-                    ? Icons.light_mode
-                    : Icons.dark_mode),
-                onPressed: settingsNotifier.cycleThemeMode,
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => SettingsScreen(
+                        handleLogout: widget.handleLogout,
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
             bottom: TabBar(
@@ -264,15 +255,13 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
           ),
           body: TabBarView(
             controller: _tabController,
-            physics: const NeverScrollableScrollPhysics(), // Disable swipe
+            physics: const NeverScrollableScrollPhysics(),
             children: [
-              _buildTabNavigator(
-                  0, CardsScreen(handleLogout: widget.handleLogout)),
-              _buildTabNavigator(1, const CollectionScreen()),
-              _buildTabNavigator(2, const DecksScreen()),
-              _buildTabNavigator(3, const ScannerScreen()),
-              _buildTabNavigator(
-                  4, ProfileScreen(handleLogout: widget.handleLogout)),
+              CardsScreen(handleLogout: widget.handleLogout),
+              const CollectionScreen(),
+              const DecksScreen(),
+              const ScannerScreen(),
+              ProfileScreen(handleLogout: widget.handleLogout),
             ],
           ),
         ),
@@ -280,16 +269,10 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
     );
   }
 
-  Widget _buildTabNavigator(int index, Widget child) {
-    return Navigator(
-      key: _navigatorKeys[index],
-      onGenerateRoute: (settings) {
-        return MaterialPageRoute(
-          settings: settings,
-          builder: (context) => child,
-        );
-      },
-    );
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 }
 
