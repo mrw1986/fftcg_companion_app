@@ -137,25 +137,50 @@ class SettingsScreen extends ConsumerWidget {
             leading: Icon(Icons.logout, color: themeColor),
             title: const Text('Logout'),
             onTap: () async {
-              try {
-                await ref.read(settingsNotifierProvider.notifier).logout();
-                if (!context.mounted) return;
+              // Show confirmation dialog
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Confirm Logout'),
+                  content: const Text('Are you sure you want to log out?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(context).colorScheme.error,
+                      ),
+                      child: const Text('Logout'),
+                    ),
+                  ],
+                ),
+              );
 
-                // Pop all routes and replace with login screen
-                Navigator.of(context)
-                    .pushNamedAndRemoveUntil('/', (route) => false);
+              // If user confirmed and context is still mounted
+              if (confirmed == true && context.mounted) {
+                try {
+                  await ref.read(settingsNotifierProvider.notifier).logout();
+                  if (!context.mounted) return;
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Successfully logged out')),
-                );
+                  // Pop all routes and replace with login screen
+                  Navigator.of(context)
+                      .pushNamedAndRemoveUntil('/', (route) => false);
 
-                handleLogout();
-              } catch (e) {
-                logger.severe('Logout failed', e);
-                if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to logout: $e')),
+                    const SnackBar(content: Text('Successfully logged out')),
                   );
+
+                  handleLogout();
+                } catch (e) {
+                  logger.severe('Logout failed', e);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to logout: $e')),
+                    );
+                  }
                 }
               }
             },
