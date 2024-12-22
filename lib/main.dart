@@ -158,6 +158,12 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
       ..addListener(_handleTabChange);
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   void _handleTabChange() {
     if (!_tabController.indexIsChanging) {
       ref
@@ -167,14 +173,17 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
   }
 
   Future<void> _handleBackNavigation(bool didPop, dynamic result) async {
-    // If the current route can pop, let it handle the back press
+    if (didPop) return;
+
     final navigator = Navigator.of(context);
+
+    // First check if current route can be popped
     if (navigator.canPop()) {
       navigator.pop();
       return;
     }
 
-    // Handle tab-level navigation
+    // Handle tab navigation using history
     final history = ref.read(rootRouteHistoryProvider);
     if (history.length > 1) {
       ref.read(rootRouteHistoryProvider.notifier).removeLastHistory();
@@ -184,7 +193,7 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
       return;
     }
 
-    // Handle app exit (only when on the first/home tab)
+    // Handle app exit (only on home tab)
     if (_tabController.index == 0) {
       final now = DateTime.now();
       if (_lastBackPress == null ||
@@ -200,20 +209,18 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
         return;
       }
       await SystemNavigator.pop();
-    } else {
-      // If on any other tab, go to home tab
-      setState(() {
-        ref.read(rootRouteHistoryProvider.notifier).clearHistory();
-        _tabController.index = 0;
-      });
+      return;
     }
+
+    // If on any other tab, go back to home tab
+    setState(() {
+      ref.read(rootRouteHistoryProvider.notifier).clearHistory();
+      _tabController.index = 0;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // Watch the history for rebuilds when it changes
-    ref.watch(rootRouteHistoryProvider);
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: _handleBackNavigation,
@@ -267,12 +274,6 @@ class _MainTabScreenState extends ConsumerState<MainTabScreen>
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
   }
 }
 
