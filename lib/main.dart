@@ -1,12 +1,15 @@
 // lib/main.dart
 
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show SystemNavigator;
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io' show Platform;
 import 'core/logging/logger_service.dart';
 import 'core/providers/root_route_history_notifier.dart';
 import 'core/theme/app_theme.dart';
@@ -21,65 +24,103 @@ import 'features/profile/presentation/screens/profile_screen.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
 import 'features/settings/providers/settings_providers.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+Future<void> main() async {
+  await runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-    debugPrint('Error: ${details.exception}');
-    debugPrint('Stack trace: ${details.stack}');
-  };
+    // Platform-specific optimizations
+    if (Platform.isAndroid) {
+      // Enable edge-to-edge on Android
+      await SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.edgeToEdge,
+        overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
+      );
 
-  PlatformDispatcher.instance.onError = (error, stack) {
-    debugPrint('Error: $error');
-    debugPrint('Stack trace: $stack');
-    return true;
-  };
+      // Update system UI overlay style for edge-to-edge
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarDividerColor: Colors.transparent,
+          // Light icons for dark nav bar
+          systemNavigationBarIconBrightness: Brightness.light,
+          // Dark icons for light status bar
+          statusBarIconBrightness: Brightness.dark,
+        ),
+      );
+    }
 
-  try {
-    final logger = LoggerService();
-    final sharedPrefs = await SharedPreferences.getInstance();
+    // Set preferred orientations
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
 
-    final container = ProviderContainer(
-      overrides: [
-        sharedPreferencesProvider.overrideWithValue(sharedPrefs),
-      ],
-    );
+    // Configure error handling
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      LoggerService().severe('Flutter Error', details.exception, details.stack);
+    };
 
-    await _initializeFirebase(logger);
+    PlatformDispatcher.instance.onError = (error, stack) {
+      LoggerService().severe('Platform Error', error, stack);
+      return true;
+    };
 
-    ErrorWidget.builder = (FlutterErrorDetails details) {
-      return Material(
-        child: Container(
-          color: Colors.white,
-          child: Center(
-            child: Text(
-              'An error occurred: ${details.exception}',
-              style: const TextStyle(color: Colors.red),
+    try {
+      final logger = LoggerService();
+      final sharedPrefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(sharedPrefs),
+        ],
+        observers: [
+          if (kDebugMode) _ProviderLogger(),
+        ],
+      );
+
+      await _initializeFirebase(logger);
+
+      ErrorWidget.builder = (FlutterErrorDetails details) {
+        return MaterialApp(
+          home: Scaffold(
+            body: SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'An error occurred: ${details.exception}',
+                    style: const TextStyle(color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
             ),
+          ),
+        );
+      };
+
+      runApp(
+        UncontrolledProviderScope(
+          container: container,
+          child: const FFTCGCompanionApp(),
+        ),
+      );
+    } catch (e, stackTrace) {
+      LoggerService().severe('Initialization error', e, stackTrace);
+      runApp(
+        MaterialApp(
+          home: ErrorScreen(
+            error: e.toString(),
+            onRetry: () => main(),
           ),
         ),
       );
-    };
-
-    runApp(
-      UncontrolledProviderScope(
-        container: container,
-        child: const FFTCGCompanionApp(),
-      ),
-    );
-  } catch (e, stackTrace) {
-    debugPrint('Initialization error: $e');
-    debugPrint('Stack trace: $stackTrace');
-    runApp(
-      MaterialApp(
-        home: ErrorScreen(
-          error: e.toString(),
-          onRetry: () => main(),
-        ),
-      ),
-    );
-  }
+    }
+  }, (error, stack) {
+    LoggerService().severe('Unhandled error', error, stack);
+  });
 }
 
 Future<void> _initializeFirebase(LoggerService logger) async {
@@ -88,12 +129,9 @@ Future<void> _initializeFirebase(LoggerService logger) async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // App Check initialization with debug/release providers
     await FirebaseAppCheck.instance.activate(
-      // For Android
       androidProvider:
           kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-      // For iOS
       appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
     );
 
@@ -104,32 +142,54 @@ Future<void> _initializeFirebase(LoggerService logger) async {
   }
 }
 
+class _ProviderLogger extends ProviderObserver {
+  @override
+  void didUpdateProvider(
+    ProviderBase<Object?> provider,
+    Object? previousValue,
+    Object? newValue,
+    ProviderContainer container,
+  ) {
+    debugPrint('''
+{
+  "provider": "${provider.name ?? provider.runtimeType}",
+  "previousValue": "$previousValue",
+  "newValue": "$newValue"
+}''');
+  }
+}
+
 class FFTCGCompanionApp extends ConsumerWidget {
   const FFTCGCompanionApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
+    final themeColor = ref.watch(themeColorProvider);
 
     return MaterialApp(
       title: 'FFTCG Companion',
       theme: AppTheme.lightTheme.copyWith(
-        // Apply theme color to light theme
         colorScheme: AppTheme.lightTheme.colorScheme.copyWith(
-          primary: ref.watch(themeColorProvider),
-          secondary: ref.watch(themeColorProvider),
+          primary: themeColor,
+          secondary: themeColor,
         ),
       ),
       darkTheme: AppTheme.darkTheme.copyWith(
-        // Apply theme color to dark theme
         colorScheme: AppTheme.darkTheme.colorScheme.copyWith(
-          primary: ref.watch(themeColorProvider),
-          secondary: ref.watch(themeColorProvider),
+          primary: themeColor,
+          secondary: themeColor,
         ),
       ),
       themeMode: themeMode,
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.0)),
+          child: child!,
+        );
+      },
     );
   }
 }
@@ -290,34 +350,36 @@ class ErrorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.error_outline,
-                color: Colors.red,
-                size: 48,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Error',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                error,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
-              ),
-            ],
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Colors.red,
+                  size: 48,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Error',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  error,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
