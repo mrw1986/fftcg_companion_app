@@ -143,8 +143,13 @@ class AuthRepository {
     }
   }
 
-  Future<void> linkWithGoogle() async {
-    await _authService.linkWithGoogle();
+  Future<UserModel?> linkWithGoogle() async {
+    try {
+      return await _authService.linkWithGoogle();
+    } catch (e, stackTrace) {
+      _logger.severe('Error linking with Google', e, stackTrace);
+      rethrow;
+    }
   }
 
   Future<void> linkWithEmailPassword(String email, String password) async {

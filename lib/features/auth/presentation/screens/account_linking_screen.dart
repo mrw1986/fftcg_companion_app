@@ -5,6 +5,7 @@ import '../widgets/auth_button.dart';
 import '../widgets/auth_text_field.dart';
 import '../../providers/auth_providers.dart';
 import '../../enums/auth_status.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class AccountLinkingScreen extends ConsumerStatefulWidget {
   const AccountLinkingScreen({super.key});
@@ -28,12 +29,12 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
   }
 
   Future<void> _linkWithGoogle() async {
-
     if (_isLoading) return;
 
     setState(() => _isLoading = true);
     try {
       await ref.read(authNotifierProvider.notifier).linkWithGoogle();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Successfully linked Google account')),
@@ -42,8 +43,15 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final message = e is FirebaseAuthException
+            ? ref.read(authServiceProvider).getReadableAuthError(e)
+            : e.toString();
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
         );
       }
     } finally {

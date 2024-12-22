@@ -384,8 +384,17 @@ class AuthService {
     }
   }
 
-  Future<void> linkWithGoogle() async {
+  Future<UserModel?> linkWithGoogle() async {
     try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        throw FirebaseAuthException(
+          code: 'no-current-user',
+          message: 'No user is currently signed in',
+        );
+      }
+
+      // Get Google credentials
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         throw FirebaseAuthException(
@@ -401,7 +410,54 @@ class AuthService {
         idToken: googleAuth.idToken,
       );
 
-      await _auth.currentUser?.linkWithCredential(credential);
+      try {
+        // Link the Google credential to the anonymous user
+        final userCredential = await currentUser.linkWithCredential(credential);
+        final linkedUser = userCredential.user;
+
+        if (linkedUser == null) {
+          throw FirebaseAuthException(
+            code: 'linking-failed',
+            message: 'Failed to link Google account',
+          );
+        }
+
+        // Update user data in Firestore
+        final userData = UserModel(
+          id: linkedUser.uid,
+          email: linkedUser.email,
+          displayName: linkedUser.displayName ?? googleUser.displayName,
+          photoURL: linkedUser.photoURL,
+          isGuest: false,
+          isEmailVerified: linkedUser.emailVerified,
+          lastLoginAt: DateTime.now(),
+        );
+
+        await _firestore.collection('users').doc(linkedUser.uid).set(
+              userData.toMap(),
+              SetOptions(merge: true),
+            );
+
+        _logger.info('Successfully linked Google account: ${linkedUser.uid}');
+        return userData;
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'credential-already-in-use') {
+          // Handle case where Google account is already linked to another account
+          _logger.warning('Google account already linked to another user');
+
+          // Sign in with Google credentials directly
+          final existingCredential =
+              await _auth.signInWithCredential(credential);
+          final existingUser = existingCredential.user;
+
+          if (existingUser != null) {
+            // Delete the anonymous user data
+            await _firestore.collection('users').doc(currentUser.uid).delete();
+            return await _createOrUpdateUser(existingUser);
+          }
+        }
+        rethrow;
+      }
     } catch (e) {
       _logger.severe('Error linking with Google', e);
       rethrow;

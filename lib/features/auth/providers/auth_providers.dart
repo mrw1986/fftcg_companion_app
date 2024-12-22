@@ -1,18 +1,21 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../repositories/auth_repository.dart';
-import '../enums/auth_status.dart'; // Added missing import
+import '../enums/auth_status.dart';
 import '../services/auth_service.dart';
 import 'auth_notifier.dart';
 import 'auth_state.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepository();
+  return AuthRepository(
+    authService: ref.watch(authServiceProvider),
+  );
 });
 
 final authNotifierProvider =
     StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   return AuthNotifier(
     authRepository: ref.watch(authRepositoryProvider),
+    authService: ref.watch(authServiceProvider),
   );
 });
 

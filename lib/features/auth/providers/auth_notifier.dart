@@ -1,22 +1,28 @@
 // lib/features/auth/providers/auth_notifier.dart
+
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/logging/logger_service.dart';
 import '../../../models/user_model.dart';
 import '../repositories/auth_repository.dart';
 import '../enums/auth_status.dart';
+import '../services/auth_service.dart';
 import 'auth_state.dart';
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _authRepository;
   final LoggerService _logger;
-  StreamSubscription? _authStateSubscription;
+  final AuthService _authService;
+  StreamSubscription<UserModel?>? _authStateSubscription;
 
   AuthNotifier({
     required AuthRepository authRepository,
     LoggerService? logger,
+    AuthService? authService,
   })  : _authRepository = authRepository,
         _logger = logger ?? LoggerService(),
+        _authService = authService ?? AuthService(),
         super(const AuthState()) {
     _initialize();
   }
@@ -121,31 +127,39 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> checkEmailVerification() async {
-    try {
-      await _authRepository.checkEmailVerification();
-    } catch (e, stackTrace) {
-      _logger.severe('Error checking email verification', e, stackTrace);
-      state = const AuthState(status: AuthStatus.error);
-    }
-  }
-
   Future<void> sendEmailVerification() async {
     try {
       await _authRepository.sendEmailVerification();
       _logger.info('Email verification sent');
     } catch (e, stackTrace) {
       _logger.severe('Error sending email verification', e, stackTrace);
-      state = const AuthState(status: AuthStatus.error);
+      rethrow;
     }
   }
 
   Future<void> linkWithGoogle() async {
     try {
       state = const AuthState(status: AuthStatus.loading);
-      await _authRepository.linkWithGoogle();
+      final userModel = await _authRepository.linkWithGoogle();
+      if (userModel != null) {
+        state = AuthState(
+          status: AuthStatus.authenticated,
+          user: userModel,
+        );
+      } else {
+        state = const AuthState(
+          status: AuthStatus.error,
+          errorMessage: 'Failed to link Google account',
+        );
+      }
     } catch (e) {
-      state = const AuthState(status: AuthStatus.error);
+      _logger.severe('Error linking with Google', e);
+      state = AuthState(
+        status: AuthStatus.error,
+        errorMessage: e is FirebaseAuthException
+            ? _authService.getReadableAuthError(e)
+            : 'Failed to link Google account',
+      );
       rethrow;
     }
   }
