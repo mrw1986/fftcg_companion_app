@@ -9,7 +9,6 @@ import '../../../core/logging/logger_service.dart';
 import '../../../models/user_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
-import 'dart:convert';
 
 class AuthService {
   final _auth = FirebaseAuth.instance;
@@ -142,24 +141,34 @@ class AuthService {
     try {
       _logger.info('Creating guest session');
 
-      final timestamp = DateTime.now();
-      final guestId = 'guest_${timestamp.millisecondsSinceEpoch}';
+      // Use Firebase anonymous auth instead of local storage
+      final userCredential = await _auth.signInAnonymously();
+      final user = userCredential.user;
 
+      if (user == null) {
+        throw FirebaseAuthException(
+          code: 'guest-session-failed',
+          message: 'Failed to create guest session',
+        );
+      }
+
+      // Create a UserModel for the guest user
       final guestUser = UserModel(
-        id: guestId,
+        id: user.uid,
         displayName: 'Guest User',
         isGuest: true,
         isEmailVerified: false,
-        createdAt: timestamp,
-        lastLoginAt: timestamp,
+        createdAt: DateTime.now(),
+        lastLoginAt: DateTime.now(),
       );
 
-      final jsonData = guestUser.toJson(); // Use toJson method
+      // Store the user data in Firestore with isGuest flag
+      await _firestore.collection('users').doc(user.uid).set({
+        ...guestUser.toMap(),
+        'lastLoginAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_guestPrefsKey, jsonEncode(jsonData));
-
-      _logger.info('Guest session created successfully with ID: $guestId');
+      _logger.info('Guest session created successfully with ID: ${user.uid}');
       return guestUser;
     } catch (e) {
       _logger.severe('Error creating guest session', e);
@@ -172,8 +181,14 @@ class AuthService {
 
   Future<bool> isGuestSession() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.containsKey(_guestPrefsKey);
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) return false;
+
+      // Check if user exists in Firestore and is marked as guest
+      final doc =
+          await _firestore.collection('users').doc(currentUser.uid).get();
+
+      return doc.exists && (doc.data()?['isGuest'] ?? false);
     } catch (e) {
       _logger.severe('Error checking guest session', e);
       return false;
@@ -229,10 +244,13 @@ class AuthService {
 
   Future<void> signOut() async {
     try {
-      if (await isGuestSession()) {
-        await _clearGuestSession();
-        _logger.info('Guest session cleared');
-        return;
+      final isGuest = await isGuestSession();
+      final currentUser = _auth.currentUser;
+
+      if (isGuest && currentUser != null) {
+        // For guest users, delete their account and data
+        await _firestore.collection('users').doc(currentUser.uid).delete();
+        await currentUser.delete();
       }
 
       await Future.wait([
