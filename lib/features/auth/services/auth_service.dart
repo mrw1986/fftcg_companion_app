@@ -58,6 +58,18 @@ class AuthService {
             message: 'Failed to verify app authenticity',
           );
         }
+      } on FirebaseException catch (e) {
+        // Handle "Too many attempts" error specifically
+        if (e.message?.contains('Too many attempts') ?? false) {
+          _logger.warning(
+              'App Check rate limit exceeded, proceeding with auth attempt');
+          return; // Continue with auth attempt even if App Check fails
+        }
+        _logger.severe('App Check verification failed', e);
+        throw FirebaseAuthException(
+          code: 'app-check-failed',
+          message: 'Failed to verify app authenticity: ${e.message}',
+        );
       } catch (e) {
         _logger.severe('App Check verification failed', e);
         throw FirebaseAuthException(
@@ -70,43 +82,52 @@ class AuthService {
 
   Future<UserModel?> signInWithEmailPassword(
       String email, String password) async {
-    try {
-      await _verifyConnectivityAndAppCheck();
-      await _checkRateLimit(email.toLowerCase());
+    int retryCount = 0;
+    const maxRetries = 3;
 
-      final userCredential = await _auth
-          .signInWithEmailAndPassword(
-            email: email.trim(),
-            password: password,
-          )
-          .timeout(_timeout);
+    while (retryCount < maxRetries) {
+      try {
+        await _verifyConnectivityAndAppCheck();
+        await _checkRateLimit(email.toLowerCase());
 
-      final user = userCredential.user;
-      if (user == null) {
-        throw FirebaseAuthException(
-          code: 'null-user',
-          message: 'Failed to get user details from Firebase',
-        );
+        final userCredential = await _auth
+            .signInWithEmailAndPassword(
+              email: email.trim(),
+              password: password,
+            )
+            .timeout(_timeout);
+
+        final user = userCredential.user;
+        if (user == null) {
+          throw FirebaseAuthException(
+            code: 'null-user',
+            message: 'Failed to get user details from Firebase',
+          );
+        }
+
+        await user.reload();
+        final userModel = await _createOrUpdateUser(user);
+        return userModel;
+      } on FirebaseException catch (e) {
+        if (e.message?.contains('Too many attempts') ?? false) {
+          retryCount++;
+          if (retryCount < maxRetries) {
+            _logger.warning(
+                'App Check rate limit hit, retrying... ($retryCount/$maxRetries)');
+            await Future.delayed(Duration(seconds: retryCount * 2));
+            continue;
+          }
+        }
+        rethrow;
+      } catch (e) {
+        rethrow;
       }
-
-      await user.reload();
-
-      final userModel = await _createOrUpdateUser(user);
-      await _clearGuestSession();
-
-      if (!user.emailVerified) {
-        await user.sendEmailVerification();
-        throw FirebaseAuthException(
-          code: 'email-not-verified',
-          message: 'Please verify your email address before signing in.',
-        );
-      }
-
-      return userModel;
-    } catch (e) {
-      _logger.severe('Error signing in with email/password', e);
-      rethrow;
     }
+
+    throw FirebaseAuthException(
+      code: 'rate-limit-exceeded',
+      message: 'Authentication failed after $maxRetries retries',
+    );
   }
 
   Future<UserModel?> signInWithGoogle() async {

@@ -15,7 +15,7 @@
         <!-- Add this meta-data tag for Firebase App Check -->
         <meta-data
             android:name="firebase_app_check_debug_token"
-            android:value="8B:D9:9E:91:3C:D8:91:47:FF:85:3E:2E:A4:11:75:6B:F5:06:C8:F0"/>
+            android:value="053827d5-b30e-4de5-962f-d20af395002c"/>
         
         <activity
             android:name=".MainActivity"

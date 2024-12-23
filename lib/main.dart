@@ -129,11 +129,17 @@ Future<void> _initializeFirebase(LoggerService logger) async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
+    // Configure App Check
     await FirebaseAppCheck.instance.activate(
       androidProvider:
           kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
       appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
     );
+
+    // Manually refresh the token after activation
+    if (kDebugMode) {
+      await FirebaseAppCheck.instance.getToken(true);
+    }
 
     logger.info('Firebase initialized successfully');
   } catch (e, stackTrace) {
