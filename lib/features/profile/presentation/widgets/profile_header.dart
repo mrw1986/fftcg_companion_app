@@ -7,6 +7,7 @@ class ProfileHeader extends StatelessWidget {
   final String? email;
   final String? avatarUrl;
   final Color avatarColor;
+  final double size; // Add this parameter
 
   const ProfileHeader({
     super.key,
@@ -14,6 +15,7 @@ class ProfileHeader extends StatelessWidget {
     this.email,
     this.avatarUrl,
     required this.avatarColor,
+    this.size = 80.0, // Default size
   });
 
   @override
@@ -23,14 +25,14 @@ class ProfileHeader extends StatelessWidget {
       child: Row(
         children: [
           CircleAvatar(
-            radius: 40,
+            radius: size / 2,
             backgroundColor: avatarColor,
             backgroundImage:
                 avatarUrl != null ? NetworkImage(avatarUrl!) : null,
             child: avatarUrl == null
-                ? const Icon(
+                ? Icon(
                     Icons.person,
-                    size: 40,
+                    size: size / 2,
                     color: Colors.white,
                   )
                 : null,

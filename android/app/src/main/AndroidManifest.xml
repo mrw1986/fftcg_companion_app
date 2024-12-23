@@ -2,7 +2,6 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    
     <application
         android:name="${applicationName}"
         android:label="FFTCG Companion"
@@ -11,12 +10,17 @@
         android:fullBackupContent="@xml/backup_rules"
         android:networkSecurityConfig="@xml/network_security_config"
         android:enableOnBackInvokedCallback="true">
-        
-        <!-- Add this meta-data tag for Firebase App Check -->
+        <!-- App Check Configuration -->
         <meta-data
-            android:name="firebase_app_check_debug_token"
-            android:value="053827d5-b30e-4de5-962f-d20af395002c"/>
-        
+        android:name="firebase_app_check_debug_token"
+        android:value="053827d5-b30e-4de5-962f-d20af395002c"/>
+        <!-- Only use officially supported Firebase configurations -->
+        <meta-data
+        android:name="firebase_performance_collection_enabled"
+        android:value="true" />
+        <meta-data
+        android:name="firebase_performance_collection_deactivated"
+        android:value="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -25,7 +29,6 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
@@ -35,17 +38,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-
         <!-- Add OAuth redirect scheme for Google Sign In -->
         <activity 
             android:name="com.google.android.gms.auth.api.signin.internal.SignInHubActivity"
             android:windowSoftInputMode="stateAlwaysHidden|adjustPan"
             android:exported="false" />
-
         <!-- Add OAuth redirect for Google Sign In -->
         <activity
             android:name="com.google.android.gms.auth.api.signin.internal.SignInRedirectActivity"

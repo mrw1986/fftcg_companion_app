@@ -580,6 +580,16 @@ class CardRepository {
       );
     }
   }
+
+  Future<void> initialize() async {
+    try {
+      await _hiveService.initialize();
+      _logger.info('Card repository initialized successfully');
+    } catch (e, stackTrace) {
+      _logger.severe('Failed to initialize card repository', e, stackTrace);
+      rethrow;
+    }
+  }
 }
 
 class CardRepositoryException implements Exception {

@@ -1,3 +1,5 @@
+// lib/features/cards/providers/card_notifier.dart
+
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/logging/logger_service.dart';
@@ -24,14 +26,25 @@ class CardNotifier extends StateNotifier<CardState> {
     _initializeCards();
   }
 
-  void _initializeCards() {
+  Future<void> _initializeCards() async {
     _logger.info('Initializing cards stream');
-    final savedFilters = _cacheService.getFilterOptions();
-    if (savedFilters != null) {
-      state = state.copyWith(filterOptions: savedFilters);
-      _logger.info('Restored saved filters: ${savedFilters.toJson()}');
+    try {
+      // Initialize Hive
+      await _repository.initialize();
+
+      final savedFilters = _cacheService.getFilterOptions();
+      if (savedFilters != null) {
+        state = state.copyWith(filterOptions: savedFilters);
+        _logger.info('Restored saved filters: ${savedFilters.toJson()}');
+      }
+      _watchCards();
+    } catch (e, stackTrace) {
+      _logger.severe('Error initializing cards', e, stackTrace);
+      state = state.copyWith(
+        status: CardLoadingStatus.error,
+        errorMessage: 'Failed to initialize cards storage',
+      );
     }
-    _watchCards();
   }
 
   void _watchCards() {
@@ -47,24 +60,31 @@ class CardNotifier extends StateNotifier<CardState> {
             cardType: state.filterOptions?.cardType,
             cost: state.filterOptions?.costs?.join(','),
           )
+          .handleError((error, stackTrace) {
+            _logger.severe('Error in cards stream', error, stackTrace);
+            state = state.copyWith(
+              status: CardLoadingStatus.error,
+              errorMessage: 'Failed to load cards: ${error.toString()}',
+            );
+          })
           .map((cards) => _applyFiltersAndSort(cards))
           .listen(
-        (cards) {
-          state = state.copyWith(
-            status: CardLoadingStatus.loaded,
-            cards: cards,
-            errorMessage: null,
+            (cards) {
+              state = state.copyWith(
+                status: CardLoadingStatus.loaded,
+                cards: cards,
+                errorMessage: null,
+              );
+              _logger.info('Cards loaded and sorted: ${cards.length}');
+            },
+            onError: (error, stackTrace) {
+              state = state.copyWith(
+                status: CardLoadingStatus.error,
+                errorMessage: 'Failed to load cards',
+              );
+              _logger.severe('Error loading cards', error, stackTrace);
+            },
           );
-          _logger.info('Cards loaded and sorted: ${cards.length}');
-        },
-        onError: (error, stackTrace) {
-          state = state.copyWith(
-            status: CardLoadingStatus.error,
-            errorMessage: 'Failed to load cards',
-          );
-          _logger.severe('Error loading cards', error, stackTrace);
-        },
-      );
     } catch (e, stackTrace) {
       _logger.severe('Error setting up cards stream', e, stackTrace);
       state = state.copyWith(
@@ -74,6 +94,20 @@ class CardNotifier extends StateNotifier<CardState> {
     }
   }
 
+  // Add error recovery method
+  Future<void> retryLoading() async {
+    try {
+      state = state.copyWith(status: CardLoadingStatus.loading);
+      await _repository.initialize();
+      _watchCards();
+    } catch (e, stackTrace) {
+      _logger.severe('Error retrying card load', e, stackTrace);
+      state = state.copyWith(
+        status: CardLoadingStatus.error,
+        errorMessage: 'Failed to reload cards: ${e.toString()}',
+      );
+    }
+  }
   List<FFTCGCard> _applyFiltersAndSort(List<FFTCGCard> cards) {
     var filteredCards = List<FFTCGCard>.from(cards);
     final filters = state.filterOptions;
@@ -190,7 +224,7 @@ class CardNotifier extends StateNotifier<CardState> {
     _watchCards();
   }
 
-  void updateSearch(String? query) {
+  void updateSearchQuery(String? query) {
     if (query == state.searchQuery) return;
 
     _logger.info('Updating search query: $query');

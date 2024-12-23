@@ -3,7 +3,6 @@
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -23,6 +22,7 @@ import 'features/scanner/presentation/screens/scanner_screen.dart';
 import 'features/profile/presentation/screens/profile_screen.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
 import 'features/settings/providers/settings_providers.dart';
+import 'services/app_check_service.dart';
 
 Future<void> main() async {
   await runZonedGuarded(() async {
@@ -70,6 +70,7 @@ Future<void> main() async {
     try {
       final logger = LoggerService();
       final sharedPrefs = await SharedPreferences.getInstance();
+      final appCheckService = AppCheckService();
 
       final container = ProviderContainer(
         overrides: [
@@ -80,7 +81,8 @@ Future<void> main() async {
         ],
       );
 
-      await _initializeFirebase(logger);
+      // Initialize Firebase and App Check
+      await _initializeFirebase(logger, appCheckService);
 
       ErrorWidget.builder = (FlutterErrorDetails details) {
         return MaterialApp(
@@ -123,25 +125,17 @@ Future<void> main() async {
   });
 }
 
-Future<void> _initializeFirebase(LoggerService logger) async {
+Future<void> _initializeFirebase(
+    LoggerService logger, AppCheckService appCheckService) async {
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Configure App Check
-    await FirebaseAppCheck.instance.activate(
-      androidProvider:
-          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-      appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
-    );
+    // Initialize App Check with the service
+    await appCheckService.initialize();
 
-    // Manually refresh the token after activation
-    if (kDebugMode) {
-      await FirebaseAppCheck.instance.getToken(true);
-    }
-
-    logger.info('Firebase initialized successfully');
+    logger.info('Firebase initialized successfully with App Check');
   } catch (e, stackTrace) {
     logger.severe('Firebase initialization failed', e, stackTrace);
     rethrow;

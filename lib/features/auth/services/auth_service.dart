@@ -3,19 +3,20 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/logging/logger_service.dart';
 import '../../../models/user_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import '../../../services/app_check_service.dart';
 
 class AuthService {
   final _auth = FirebaseAuth.instance;
   final _googleSignIn = GoogleSignIn();
   final _firestore = FirebaseFirestore.instance;
+  final _appCheckService = AppCheckService();
   static const String _guestPrefsKey = 'guest_session';
-  final _timeout = const Duration(seconds: 30);
+  static const Duration _timeout = Duration(seconds: 30);
   final _logger = LoggerService();
 
   // Rate limiting properties
@@ -50,32 +51,20 @@ class AuthService {
   Future<void> _verifyConnectivityAndAppCheck() async {
     if (!kDebugMode) {
       try {
-        final token =
-            await FirebaseAppCheck.instance.getToken(true).timeout(_timeout);
-        if (token == null) {
+        final isValid = await _appCheckService.validateToken();
+        if (!isValid) {
           throw FirebaseAuthException(
             code: 'app-check-failed',
             message: 'Failed to verify app authenticity',
           );
         }
       } on FirebaseException catch (e) {
-        // Handle "Too many attempts" error specifically
-        if (e.message?.contains('Too many attempts') ?? false) {
-          _logger.warning(
-              'App Check rate limit exceeded, proceeding with auth attempt');
-          return; // Continue with auth attempt even if App Check fails
+        if (e.code == 'too-many-attempts') {
+          _logger
+              .warning('App Check rate limit hit, proceeding with retry logic');
+          return;
         }
-        _logger.severe('App Check verification failed', e);
-        throw FirebaseAuthException(
-          code: 'app-check-failed',
-          message: 'Failed to verify app authenticity: ${e.message}',
-        );
-      } catch (e) {
-        _logger.severe('App Check verification failed', e);
-        throw FirebaseAuthException(
-          code: 'app-check-failed',
-          message: 'Failed to verify app authenticity',
-        );
+        rethrow;
       }
     }
   }
@@ -106,10 +95,9 @@ class AuthService {
         }
 
         await user.reload();
-        final userModel = await _createOrUpdateUser(user);
-        return userModel;
+        return await _createOrUpdateUser(user);
       } on FirebaseException catch (e) {
-        if (e.message?.contains('Too many attempts') ?? false) {
+        if (e.code == 'too-many-attempts') {
           retryCount++;
           if (retryCount < maxRetries) {
             _logger.warning(
@@ -118,8 +106,6 @@ class AuthService {
             continue;
           }
         }
-        rethrow;
-      } catch (e) {
         rethrow;
       }
     }
@@ -162,7 +148,6 @@ class AuthService {
     try {
       _logger.info('Creating guest session');
 
-      // Use Firebase anonymous auth instead of local storage
       final userCredential = await _auth.signInAnonymously();
       final user = userCredential.user;
 
@@ -173,7 +158,6 @@ class AuthService {
         );
       }
 
-      // Create a UserModel for the guest user
       final guestUser = UserModel(
         id: user.uid,
         displayName: 'Guest User',
@@ -183,7 +167,6 @@ class AuthService {
         lastLoginAt: DateTime.now(),
       );
 
-      // Store the user data in Firestore with isGuest flag
       await _firestore.collection('users').doc(user.uid).set({
         ...guestUser.toMap(),
         'lastLoginAt': FieldValue.serverTimestamp(),
@@ -205,7 +188,6 @@ class AuthService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) return false;
 
-      // Check if user exists in Firestore and is marked as guest
       final doc =
           await _firestore.collection('users').doc(currentUser.uid).get();
 
@@ -269,7 +251,6 @@ class AuthService {
       final currentUser = _auth.currentUser;
 
       if (isGuest && currentUser != null) {
-        // For guest users, delete their account and data
         await _firestore.collection('users').doc(currentUser.uid).delete();
         await currentUser.delete();
       }
@@ -415,7 +396,6 @@ class AuthService {
         );
       }
 
-      // Get Google credentials
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         throw FirebaseAuthException(
@@ -432,7 +412,6 @@ class AuthService {
       );
 
       try {
-        // Link the Google credential to the anonymous user
         final userCredential = await currentUser.linkWithCredential(credential);
         final linkedUser = userCredential.user;
 
@@ -443,7 +422,6 @@ class AuthService {
           );
         }
 
-        // Update user data in Firestore
         final userData = UserModel(
           id: linkedUser.uid,
           email: linkedUser.email,
@@ -463,16 +441,13 @@ class AuthService {
         return userData;
       } on FirebaseAuthException catch (e) {
         if (e.code == 'credential-already-in-use') {
-          // Handle case where Google account is already linked to another account
           _logger.warning('Google account already linked to another user');
 
-          // Sign in with Google credentials directly
           final existingCredential =
               await _auth.signInWithCredential(credential);
           final existingUser = existingCredential.user;
 
           if (existingUser != null) {
-            // Delete the anonymous user data
             await _firestore.collection('users').doc(currentUser.uid).delete();
             return await _createOrUpdateUser(existingUser);
           }
@@ -510,13 +485,11 @@ class AuthService {
 
       try {
         await currentUser.linkWithCredential(credential);
-        // Reload user after linking and update in Firestore
         final updatedUser = _auth.currentUser!;
         await updatedUser.reload();
         return _createOrUpdateUser(updatedUser);
       } on FirebaseAuthException catch (e) {
         if (e.code == 'provider-already-linked') {
-          // Handle account-exists-with-different-credential edge case manually
           return _handleExistingAccount(credential)
               .then((_) => getCurrentUser());
         }
@@ -546,7 +519,6 @@ class AuthService {
       return await _auth.signInWithCredential(credential);
     } on FirebaseAuthException catch (e) {
       if (e.code == 'account-exists-with-different-credential') {
-        // Handle the account-exists-with-different-credential error manually
         final googleUser = await GoogleSignIn().signIn();
 
         if (googleUser != null) {
@@ -558,7 +530,7 @@ class AuthService {
           return await _auth.signInWithCredential(googleCredential);
         }
       }
-      rethrow; // Re-throw the error if it's not the specific error we're handling
+      rethrow;
     }
   }
 }

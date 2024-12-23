@@ -17,11 +17,15 @@ class AuthButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final buttonHeight = MediaQuery.of(context).size.height * 0.06;
+
     final Widget button = isOutlined
         ? OutlinedButton(
             onPressed: isLoading ? () {} : onPressed,
             style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: EdgeInsets.symmetric(
+                vertical: buttonHeight * 0.3,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -31,7 +35,9 @@ class AuthButton extends StatelessWidget {
         : ElevatedButton(
             onPressed: isLoading ? () {} : onPressed,
             style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: EdgeInsets.symmetric(
+                vertical: buttonHeight * 0.3,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -42,6 +48,7 @@ class AuthButton extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: SizedBox(
+        height: buttonHeight,
         width: double.infinity,
         child: button,
       ),

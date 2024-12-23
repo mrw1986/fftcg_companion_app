@@ -1,4 +1,5 @@
 // lib/features/auth/presentation/auth_wrapper.dart
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -58,62 +59,60 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   Future<void> _showVerificationDialog(String email) async {
     if (!mounted) return;
 
-    // Set dialog state before showing
     setState(() => _showingDialog = true);
 
     try {
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      final theme = Theme.of(context);
+
+      if (!mounted) return;
+
       await showDialog(
-        context: context, // Use current context directly
+        context: context,
         barrierDismissible: false,
         builder: (dialogContext) => EmailVerificationDialog(
           email: email,
-          onResendEmail: () => _handleResendEmail(
-            ScaffoldMessenger.of(context), // Use context for ScaffoldMessenger
-            Theme.of(context), // Use context for Theme
-          ),
-          onCancel: () => _handleCancel(dialogContext),
+          onResendEmail: () async {
+            try {
+              await ref
+                  .read(authNotifierProvider.notifier)
+                  .sendEmailVerification();
+              if (!mounted) return;
+              scaffoldMessenger.showSnackBar(
+                const SnackBar(content: Text('Verification email sent')),
+              );
+            } catch (e) {
+              if (!mounted) return;
+              scaffoldMessenger.showSnackBar(
+                SnackBar(
+                  content: Text('Failed to send verification email: $e'),
+                  backgroundColor: theme.colorScheme.error,
+                ),
+              );
+            }
+          },
+          onCancel: () async {
+            // Store navigator before async gap
+            final navigator = Navigator.of(dialogContext);
+            await ref.read(authNotifierProvider.notifier).signOut();
+
+            if (dialogContext.mounted) {
+              navigator.pop(); // Close dialog
+            }
+
+            if (mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
+              );
+            }
+          },
         ),
       );
     } finally {
       if (mounted) {
         setState(() => _showingDialog = false);
       }
-    }
-  }
-
-  Future<void> _handleResendEmail(
-    ScaffoldMessengerState scaffoldMessenger,
-    ThemeData theme,
-  ) async {
-    try {
-      await ref.read(authNotifierProvider.notifier).sendEmailVerification();
-
-      if (mounted) {
-        scaffoldMessenger.showSnackBar(
-          const SnackBar(
-            content: Text('Verification email sent'),
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        scaffoldMessenger.showSnackBar(
-          SnackBar(
-            content: Text('Failed to send verification email: $e'),
-            backgroundColor: theme.colorScheme.error,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _handleCancel(BuildContext dialogContext) async {
-    // Store Navigator before async gap
-    final navigator = Navigator.of(dialogContext);
-    await ref.read(authNotifierProvider.notifier).signOut();
-    if (dialogContext.mounted) {
-      navigator.pop();
     }
   }
 

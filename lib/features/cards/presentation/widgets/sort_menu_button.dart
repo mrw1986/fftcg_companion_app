@@ -1,8 +1,10 @@
+// lib/features/cards/presentation/widgets/sort_menu_button.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../models/card_filter_options.dart';
 import '../../providers/card_providers.dart';
-import '../../../../core/logging/logger_service.dart';
 
 class SortMenuButton extends ConsumerWidget {
   const SortMenuButton({super.key});
@@ -13,15 +15,188 @@ class SortMenuButton extends ConsumerWidget {
     final currentSort =
         cardState.filterOptions?.sortOption ?? CardSortOption.setNumber;
     final isAscending = cardState.filterOptions?.ascending ?? true;
-    final logger = LoggerService();
+    final isDesktop = ResponsiveUtils.isDesktop(context);
 
     return PopupMenuButton<(CardSortOption, bool)>(
       initialValue: (currentSort, isAscending),
       tooltip: 'Sort cards',
       icon: const Icon(Icons.sort),
+      itemBuilder: (context) {
+        List<PopupMenuEntry<(CardSortOption, bool)>> items = [];
+
+        // Set Number
+        items.add(
+          PopupMenuItem(
+            value: (CardSortOption.setNumber, true),
+            child: Row(
+              children: [
+                Text(
+                  'Set Number',
+                  style: TextStyle(
+                    fontSize:
+                        ResponsiveUtils.getResponsiveFontSize(context, 14),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (currentSort == CardSortOption.setNumber && isAscending)
+                  const Icon(Icons.check, size: 20),
+              ],
+            ),
+          ),
+        );
+
+        items.add(const PopupMenuDivider());
+
+        // Name
+        items.add(
+          PopupMenuItem(
+            value: (CardSortOption.nameAsc, true),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Name (A-Z)',
+                  style: TextStyle(
+                    fontSize:
+                        ResponsiveUtils.getResponsiveFontSize(context, 14),
+                  ),
+                ),
+                if (currentSort == CardSortOption.nameAsc && isAscending)
+                  const Icon(Icons.check, size: 20),
+              ],
+            ),
+          ),
+        );
+        items.add(
+          PopupMenuItem(
+            value: (CardSortOption.nameDesc, false),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Name (Z-A)',
+                  style: TextStyle(
+                    fontSize:
+                        ResponsiveUtils.getResponsiveFontSize(context, 14),
+                  ),
+                ),
+                if (currentSort == CardSortOption.nameDesc && !isAscending)
+                  const Icon(Icons.check, size: 20),
+              ],
+            ),
+          ),
+        );
+
+        items.add(const PopupMenuDivider());
+
+        // Cost
+        items.add(
+          PopupMenuItem(
+            value: (CardSortOption.costAsc, true),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Cost (Low to High)',
+                  style: TextStyle(
+                    fontSize:
+                        ResponsiveUtils.getResponsiveFontSize(context, 14),
+                  ),
+                ),
+                if (currentSort == CardSortOption.costAsc && isAscending)
+                  const Icon(Icons.check, size: 20),
+              ],
+            ),
+          ),
+        );
+        items.add(
+          PopupMenuItem(
+            value: (CardSortOption.costDesc, false),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Cost (High to Low)',
+                  style: TextStyle(
+                    fontSize:
+                        ResponsiveUtils.getResponsiveFontSize(context, 14),
+                  ),
+                ),
+                if (currentSort == CardSortOption.costDesc && !isAscending)
+                  const Icon(Icons.check, size: 20),
+              ],
+            ),
+          ),
+        );
+
+        // Power (Desktop only)
+        if (isDesktop) {
+          items.add(const PopupMenuDivider());
+          items.add(
+            PopupMenuItem(
+              value: (CardSortOption.powerAsc, true),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Power (Low to High)',
+                    style: TextStyle(
+                      fontSize:
+                          ResponsiveUtils.getResponsiveFontSize(context, 14),
+                    ),
+                  ),
+                  if (currentSort == CardSortOption.powerAsc && isAscending)
+                    const Icon(Icons.check, size: 20),
+                ],
+              ),
+            ),
+          );
+          items.add(
+            PopupMenuItem(
+              value: (CardSortOption.powerDesc, false),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Power (High to Low)',
+                    style: TextStyle(
+                      fontSize:
+                          ResponsiveUtils.getResponsiveFontSize(context, 14),
+                    ),
+                  ),
+                  if (currentSort == CardSortOption.powerDesc && !isAscending)
+                    const Icon(Icons.check, size: 20),
+                ],
+              ),
+            ),
+          );
+        }
+
+        // Release Date
+        items.add(const PopupMenuDivider());
+        items.add(
+          PopupMenuItem(
+            value: (CardSortOption.releaseDate, true),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Release Date (Newest)',
+                  style: TextStyle(
+                    fontSize:
+                        ResponsiveUtils.getResponsiveFontSize(context, 14),
+                  ),
+                ),
+                if (currentSort == CardSortOption.releaseDate && isAscending)
+                  const Icon(Icons.check, size: 20),
+              ],
+            ),
+          ),
+        );
+
+        return items;
+      },
       onSelected: (value) {
-        logger.info(
-            'Changing sort option to: ${value.$1}, ascending: ${value.$2}');
         final currentFilters =
             cardState.filterOptions ?? const CardFilterOptions();
         ref.read(cardNotifierProvider.notifier).updateFilters(
@@ -31,93 +206,6 @@ class SortMenuButton extends ConsumerWidget {
               ),
             );
       },
-      itemBuilder: (BuildContext context) => [
-        ..._buildSortMenuItem(
-          'Set Number',
-          CardSortOption.setNumber,
-          currentSort,
-          isAscending,
-          showAscDesc: false,
-        ),
-        const PopupMenuDivider(),
-        ..._buildSortMenuItem(
-          'Name',
-          CardSortOption.nameAsc,
-          currentSort,
-          isAscending,
-        ),
-        const PopupMenuDivider(),
-        ..._buildSortMenuItem(
-          'Cost',
-          CardSortOption.costAsc,
-          currentSort,
-          isAscending,
-        ),
-        const PopupMenuDivider(),
-        ..._buildSortMenuItem(
-          'Power',
-          CardSortOption.powerAsc,
-          currentSort,
-          isAscending,
-        ),
-        const PopupMenuDivider(),
-        ..._buildSortMenuItem(
-          'Release Date',
-          CardSortOption.releaseDate,
-          currentSort,
-          isAscending,
-          showAscDesc: false,
-        ),
-      ],
     );
-  }
-
-  List<PopupMenuEntry<(CardSortOption, bool)>> _buildSortMenuItem(
-    String title,
-    CardSortOption option,
-    CardSortOption currentOption,
-    bool currentAscending, {
-    bool showAscDesc = true,
-  }) {
-    if (!showAscDesc) {
-      return [
-        PopupMenuItem(
-          value: (option, true),
-          child: Row(
-            children: [
-              Text(title),
-              const SizedBox(width: 8),
-              if (currentOption == option && currentAscending)
-                const Icon(Icons.check, size: 20),
-            ],
-          ),
-        ),
-      ];
-    }
-
-    return [
-      PopupMenuItem(
-        value: (option, true),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('$title (A-Z)'),
-            if (currentOption == option && currentAscending)
-              const Icon(Icons.check, size: 20),
-          ],
-        ),
-      ),
-      PopupMenuItem(
-        value: (option, false),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('$title (Z-A)'),
-            if (currentOption == option && !currentAscending)
-              const Icon(Icons.check, size: 20),
-          ],
-        ),
-      ),
-    ];
   }
 }
