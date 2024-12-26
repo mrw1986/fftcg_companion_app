@@ -17,9 +17,10 @@ class CardRepository {
   final ConnectivityService _connectivityService;
 
   static const String _collectionName = 'cards';
-  static const int _batchSize = 500;
+  static const int _batchSize = 20;
   static const Duration _cacheExpiration = Duration(hours: 24);
   static const String _lastCacheTimeKey = 'last_cache_time';
+  static const String _lastPageKey = 'last_fetched_page';
 
   CardRepository({
     FirebaseFirestore? firestore,
@@ -40,38 +41,32 @@ class CardRepository {
     String? cost,
   }) async* {
     try {
-      // Get local cards outside the main try block so it's available in catch
-      List<FFTCGCard> localResults = _getLocalCards(
+      // First emit cached data
+      final cachedCards = _getFilteredLocalCards(
         searchQuery: searchQuery,
         elements: elements,
         cardType: cardType,
         cost: cost,
       );
+      yield cachedCards;
 
-      // First, yield local data
-      yield localResults;
-
-      // Check if we're in guest mode
+      // Check if we should query Firestore
       final isGuest = await _authService.isGuestSession();
-      if (isGuest) {
-        _logger.info('In guest mode - using local data only');
-        return;
-      }
-
-      // Check connectivity
       final isConnected = await _connectivityService.hasStableConnection();
-      if (!isConnected) {
-        _logger.info('No stable connection - using local data only');
+      if (isGuest || !isConnected) {
+        _logger.info(
+            'Using local data only - Guest: $isGuest, Connected: $isConnected');
         return;
       }
 
-      // Build the query
+      // Build base query
       Query query = _firestore.collection(_collectionName);
 
-      if (searchQuery != null && searchQuery.isNotEmpty) {
+      // Apply filters
+      if (searchQuery?.isNotEmpty ?? false) {
         query = query
             .where('cleanName',
-                isGreaterThanOrEqualTo: searchQuery.toLowerCase())
+                isGreaterThanOrEqualTo: searchQuery!.toLowerCase())
             .where('cleanName', isLessThan: '${searchQuery.toLowerCase()}z');
       }
 
@@ -108,18 +103,17 @@ class CardRepository {
 
           // Save to local storage
           await _saveCardsLocally(resultsList);
+          await _updateCacheTimestamp();
 
           yield resultsList;
         } catch (e, stackTrace) {
           _logger.severe('Error processing card snapshot', e, stackTrace);
-          // Return existing local data on error
-          yield localResults;
+          yield cachedCards;
         }
       }
     } catch (e, stackTrace) {
       _logger.severe('Error watching cards', e, stackTrace);
-      // Use _getLocalCards directly in catch block
-      yield _getLocalCards(
+      yield _getFilteredLocalCards(
         searchQuery: searchQuery,
         elements: elements,
         cardType: cardType,
@@ -128,15 +122,169 @@ class CardRepository {
     }
   }
 
+  Future<List<FFTCGCard>> getCardsPage(int page) async {
+    try {
+      // Check cache first
+      if (await _isCacheValid()) {
+        final cachedCards = _getLocalCardsPage(page);
+        if (cachedCards.isNotEmpty) {
+          _logger.info('Returning cached cards for page $page');
+          return cachedCards;
+        }
+      }
+
+      // Check connectivity
+      final isConnected = await _connectivityService.hasStableConnection();
+      if (!isConnected) {
+        _logger.info('No connection, returning local cards for page $page');
+        return _getLocalCardsPage(page);
+      }
+
+      final query = page == 0
+          ? _firestore
+              .collection(_collectionName)
+              .orderBy('name')
+              .limit(_batchSize)
+          : await _getLastDocumentName(page - 1).then((lastDocName) =>
+              lastDocName != null
+                  ? _firestore
+                      .collection(_collectionName)
+                      .orderBy('name')
+                      .startAfter([lastDocName]).limit(_batchSize)
+                  : _firestore
+                      .collection(_collectionName)
+                      .orderBy('name')
+                      .limit(_batchSize));
+
+      final snapshot = await query.get();
+      final cards =
+          snapshot.docs.map((doc) => FFTCGCard.fromFirestore(doc)).toList();
+
+      await _saveCardsLocally(cards);
+      await _updateLastFetchedPage(page);
+      await _updateCacheTimestamp();
+
+      _logger.info('Fetched ${cards.length} cards for page $page');
+      return cards;
+    } catch (e, stackTrace) {
+      _logger.severe('Error getting cards page $page', e, stackTrace);
+      return _getLocalCardsPage(page);
+    }
+  }
+
+  List<FFTCGCard> _getLocalCardsPage(int page) {
+    try {
+      final allCards = _hiveService.getAllCards();
+      final start = page * _batchSize;
+      final end = start + _batchSize;
+
+      if (start >= allCards.length) return [];
+
+      return allCards.sublist(
+          start, end > allCards.length ? allCards.length : end);
+    } catch (e, stackTrace) {
+      _logger.severe('Error getting local cards page', e, stackTrace);
+      return [];
+    }
+  }
+
+  List<FFTCGCard> _getFilteredLocalCards({
+    String? searchQuery,
+    List<String>? elements,
+    String? cardType,
+    String? cost,
+  }) {
+    try {
+      var cards = _hiveService.getAllCards();
+
+      if (searchQuery?.isNotEmpty ?? false) {
+        cards = cards
+            .where((card) =>
+                card.name.toLowerCase().contains(searchQuery!.toLowerCase()) ||
+                (card.cardNumber
+                        ?.toLowerCase()
+                        .contains(searchQuery.toLowerCase()) ??
+                    false))
+            .toList();
+      }
+
+      if (elements?.isNotEmpty ?? false) {
+        cards = cards
+            .where((card) =>
+                elements!.any((element) => card.elements.contains(element)))
+            .toList();
+      }
+
+      if (cardType != null) {
+        cards = cards.where((card) => card.cardType == cardType).toList();
+      }
+
+      if (cost != null) {
+        cards = cards.where((card) => card.cost == cost).toList();
+      }
+
+      return cards;
+    } catch (e, stackTrace) {
+      _logger.severe('Error getting filtered local cards', e, stackTrace);
+      return [];
+    }
+  }
+
+  Future<void> _saveCardsLocally(List<FFTCGCard> cards) async {
+    try {
+      await _hiveService.saveCards(cards);
+      _logger.info('Saved ${cards.length} cards locally');
+    } catch (e, stackTrace) {
+      _logger.severe('Error saving cards locally', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<void> _updateCacheTimestamp() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        _lastCacheTimeKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (e, stackTrace) {
+      _logger.severe('Error updating cache timestamp', e, stackTrace);
+    }
+  }
+
+  Future<void> _updateLastFetchedPage(int page) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_lastPageKey, page);
+    } catch (e, stackTrace) {
+      _logger.severe('Error updating last fetched page', e, stackTrace);
+    }
+  }
+
+  Future<bool> _isCacheValid() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastCacheTime = prefs.getInt(_lastCacheTimeKey);
+
+      if (lastCacheTime == null) return false;
+
+      final lastCacheDateTime =
+          DateTime.fromMillisecondsSinceEpoch(lastCacheTime);
+      return DateTime.now().difference(lastCacheDateTime) < _cacheExpiration;
+    } catch (e, stackTrace) {
+      _logger.severe('Error checking cache validity', e, stackTrace);
+      return false;
+    }
+  }
+
+  // Keep existing methods...
   Future<FFTCGCard?> getCardByNumber(String cardNumber) async {
     try {
-      // First check local storage
       final localCard = _hiveService.getCard(cardNumber);
       if (localCard != null) {
         return localCard;
       }
 
-      // Check if we're in guest mode or offline
       final isGuest = await _authService.isGuestSession();
       final isConnected = await _connectivityService.hasStableConnection();
       if (isGuest || !isConnected) {
@@ -144,15 +292,14 @@ class CardRepository {
         return null;
       }
 
-      // Query Firestore
-      final querySnapshot = await _retryOperation(() => _firestore
+      final querySnapshot = await _firestore
           .collection(_collectionName)
           .where('extendedData', arrayContains: {
             'name': 'Number',
             'value': cardNumber,
           })
           .limit(1)
-          .get());
+          .get();
 
       if (querySnapshot.docs.isEmpty) {
         _logger.warning('Card not found: $cardNumber');
@@ -387,17 +534,7 @@ class CardRepository {
       _logger.severe('Error getting local cards', e, stackTrace);
       return [];
     }
-  }
-
-  Future<void> _saveCardsLocally(List<FFTCGCard> cards) async {
-    try {
-      await _hiveService.saveCards(cards);
-      _logger.info('Saved ${cards.length} cards locally');
-    } catch (e, stackTrace) {
-      _logger.severe('Error saving cards locally', e, stackTrace);
-      rethrow;
-    }
-  }
+  }  
 
   Future<void> saveCardLocally(FFTCGCard card) async {
     try {
@@ -588,6 +725,17 @@ class CardRepository {
     } catch (e, stackTrace) {
       _logger.severe('Failed to initialize card repository', e, stackTrace);
       rethrow;
+    }
+  }
+
+  Future<String?> _getLastDocumentName(int previousPage) async {
+    try {
+      final lastPageCards = _getLocalCardsPage(previousPage);
+      if (lastPageCards.isEmpty) return null;
+      return lastPageCards.last.name;
+    } catch (e, stackTrace) {
+      _logger.severe('Error getting last document name', e, stackTrace);
+      return null;
     }
   }
 }

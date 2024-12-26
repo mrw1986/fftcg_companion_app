@@ -45,8 +45,11 @@ class CardGridItem extends StatelessWidget {
                 child: CachedNetworkImage(
                   imageUrl: useHighRes ? card.highResUrl : card.lowResUrl,
                   fit: BoxFit.contain,
+                  memCacheWidth: useHighRes ? 400 : 200,
+                  memCacheHeight: useHighRes ? 560 : 280,
+                  placeholderFadeInDuration: const Duration(milliseconds: 300),
                   placeholder: (context, url) => const Center(
-                    child: CircularProgressIndicator(),
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                   errorWidget: (context, url, error) => const Center(
                     child: Icon(Icons.error),
@@ -85,10 +88,11 @@ class CardGridItem extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                card.cardNumber ?? '',
-                style: subtitleStyle,
-              ),
+              if (card.cardNumber != null)
+                Text(
+                  card.cardNumber!,
+                  style: subtitleStyle,
+                ),
               if (card.cost != null)
                 Text(
                   'Cost: ${card.cost}',
@@ -96,6 +100,22 @@ class CardGridItem extends StatelessWidget {
                 ),
             ],
           ),
+          if (card.elements.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: card.elements.map((element) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Text(
+                    element,
+                    style: subtitleStyle?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
         ],
       ),
     );

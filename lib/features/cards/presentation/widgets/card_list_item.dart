@@ -8,12 +8,12 @@ import '../screens/card_detail_screen.dart';
 
 class CardListItem extends StatelessWidget {
   final FFTCGCard card;
-  final double height; // Add this parameter
+  final double height;
 
   const CardListItem({
     super.key,
     required this.card,
-    this.height = 72.0, // Default height
+    this.height = 72.0,
   });
 
   @override
@@ -46,8 +46,11 @@ class CardListItem extends StatelessWidget {
             child: CachedNetworkImage(
               imageUrl: card.lowResUrl,
               fit: BoxFit.contain,
+              memCacheWidth: 120,
+              memCacheHeight: 168,
+              placeholderFadeInDuration: const Duration(milliseconds: 300),
               placeholder: (context, url) => const Center(
-                child: CircularProgressIndicator(),
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
               errorWidget: (context, url, error) => const Center(
                 child: Icon(Icons.error),
@@ -72,23 +75,26 @@ class CardListItem extends StatelessWidget {
       fontSize: ResponsiveUtils.getResponsiveFontSize(context, 12),
     );
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(card.cardNumber ?? '', style: subtitleStyle),
-        if (card.elements.isNotEmpty) ...[
-          const SizedBox(width: 8),
-          ...card.elements.map(
-            (element) => Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Text(
-                element,
-                style: subtitleStyle.copyWith(
-                  fontWeight: FontWeight.bold,
+        if (card.cardNumber != null)
+          Text(card.cardNumber!, style: subtitleStyle),
+        if (card.elements.isNotEmpty)
+          Row(
+            children: card.elements.map((element) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Text(
+                  element,
+                  style: subtitleStyle.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            ),
+              );
+            }).toList(),
           ),
-        ],
       ],
     );
   }

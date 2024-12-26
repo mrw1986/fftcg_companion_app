@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/utils/responsive_utils.dart';
-import '../../../../models/user_model.dart';
 import '../../providers/card_providers.dart';
 import '../../models/card_filter_options.dart';
 import '../widgets/card_grid_item.dart';
@@ -11,8 +10,6 @@ import '../widgets/card_list_item.dart';
 import '../widgets/filter_bottom_sheet.dart';
 import '../widgets/search_bar_widget.dart';
 import '../../providers/card_state.dart';
-import '../../../auth/providers/auth_providers.dart';
-import '../../../settings/providers/settings_providers.dart';
 
 class CardsScreen extends ConsumerStatefulWidget {
   final VoidCallback handleLogout;
@@ -28,172 +25,101 @@ class CardsScreen extends ConsumerStatefulWidget {
 
 class _CardsScreenState extends ConsumerState<CardsScreen> {
   final _scrollController = ScrollController();
+  bool _isLoadingMore = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _showFilterBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      constraints: BoxConstraints(
-        maxWidth: ResponsiveUtils.getDialogWidth(context),
-      ),
-      builder: (context) => FilterBottomSheet(
-        currentFilters: ref.read(cardNotifierProvider).filterOptions ??
-            const CardFilterOptions(),
-        onFilterChanged: (filters) {
-          ref.read(cardNotifierProvider.notifier).updateFilters(filters);
-        },
-      ),
-    );
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    final threshold = maxScroll * 0.9; // Load more when 90% scrolled
+
+    if (currentScroll >= threshold && !_isLoadingMore) {
+      _loadMoreCards();
+    }
+  }
+
+  Future<void> _loadMoreCards() async {
+    final cardState = ref.read(cardNotifierProvider);
+    if (cardState.isLoading || cardState.hasReachedEnd) return;
+
+    setState(() => _isLoadingMore = true);
+
+    try {
+      await ref.read(cardNotifierProvider.notifier).loadNextPage();
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+      }
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    return ref.read(cardNotifierProvider.notifier).refreshCards();
   }
 
   @override
   Widget build(BuildContext context) {
     final cardState = ref.watch(cardNotifierProvider);
-    final user = ref.watch(currentUserProvider);
-    final themeColor = ref.watch(themeColorProvider);
+    final themeColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      body: ResponsiveUtils.buildResponsiveLayout(
-        context: context,
-        mobile: _buildMobileLayout(cardState, user),
-        tablet: _buildTabletLayout(cardState, user),
-        desktop: _buildDesktopLayout(cardState, user),
+      body: RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: ResponsiveUtils.getScreenPadding(context),
+                child: const SearchBarWidget(),
+              ),
+            ),
+            if (cardState.status == CardLoadingStatus.initial)
+              const SliverFillRemaining(
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (cardState.status == CardLoadingStatus.error)
+              SliverFillRemaining(
+                child: _buildErrorView(cardState),
+              )
+            else ...[
+              if (cardState.cards.isEmpty)
+                const SliverFillRemaining(
+                  child: Center(child: Text('No cards found')),
+                )
+              else
+                cardState.isGridView
+                    ? _buildCardGrid(cardState)
+                    : _buildCardList(cardState),
+              if (_isLoadingMore)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
       ),
       floatingActionButton: _buildFloatingActionButtons(cardState, themeColor),
     );
-  }
-
-  Widget _buildMobileLayout(CardState cardState, UserModel? user) {
-    return Column(
-      children: [
-        _buildHeader(user),
-        Expanded(
-          child: _buildCardList(cardState),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTabletLayout(CardState cardState, UserModel? user) {
-    final sideNavWidth = ResponsiveUtils.getSideNavWidth(context);
-
-    return Row(
-      children: [
-        SizedBox(
-          width: sideNavWidth,
-          child: _buildSidePanel(cardState),
-        ),
-        const VerticalDivider(width: 1),
-        Expanded(
-          child: Column(
-            children: [
-              _buildHeader(user),
-              Expanded(
-                child: _buildCardList(cardState),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDesktopLayout(CardState cardState, UserModel? user) {
-    final sideNavWidth = ResponsiveUtils.getSideNavWidth(context);
-
-    return Row(
-      children: [
-        SizedBox(
-          width: sideNavWidth,
-          child: _buildSidePanel(cardState),
-        ),
-        const VerticalDivider(width: 1),
-        Expanded(
-          child: Column(
-            children: [
-              _buildHeader(user),
-              Expanded(
-                child: _buildCardList(cardState),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHeader(UserModel? user) {
-    return Padding(
-      padding: ResponsiveUtils.getScreenPadding(context),
-      child: Column(
-        children: [
-          const SearchBarWidget(),
-          if (user != null && !user.isGuest) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Welcome, ${user.displayName ?? 'User'}',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontSize:
-                        ResponsiveUtils.getResponsiveFontSize(context, 14),
-                  ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSidePanel(CardState cardState) {
-    return Material(
-      child: ListView(
-        padding: ResponsiveUtils.getScreenPadding(context),
-        children: [
-          Text(
-            'Filters',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontSize: ResponsiveUtils.getResponsiveFontSize(context, 20),
-                ),
-          ),
-          const SizedBox(height: 16),
-          // Add permanent filter widgets here for tablet/desktop view
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCardList(CardState cardState) {
-    return ResponsiveUtils.wrapWithMaxWidth(
-      RefreshIndicator(
-        onRefresh: () => ref.read(cardNotifierProvider.notifier).refreshCards(),
-        child: _buildCardContent(cardState),
-      ),
-      context,
-    );
-  }
-
-  Widget _buildCardContent(CardState cardState) {
-    switch (cardState.status) {
-      case CardLoadingStatus.loading:
-        return const Center(child: CircularProgressIndicator());
-
-      case CardLoadingStatus.error:
-        return _buildErrorView(cardState);
-
-      default:
-        if (cardState.cards.isEmpty) {
-          return const Center(child: Text('No cards found'));
-        }
-        return cardState.isGridView
-            ? _buildCardGrid(cardState)
-            : _buildCardListView(cardState);
-    }
   }
 
   Widget _buildCardGrid(CardState cardState) {
@@ -201,38 +127,41 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
     final spacing = ResponsiveUtils
         .spacing[ResponsiveUtils.isPhone(context) ? 'sm' : 'md']!;
 
-    return GridView.builder(
-      controller: _scrollController,
+    return SliverPadding(
       padding: ResponsiveUtils.getScreenPadding(context),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        childAspectRatio: 0.7,
-        crossAxisSpacing: spacing,
-        mainAxisSpacing: spacing,
+      sliver: SliverGrid(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          childAspectRatio: 0.7,
+          crossAxisSpacing: spacing,
+          mainAxisSpacing: spacing,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final card = cardState.cards[index];
+            return CardGridItem(
+              card: card,
+              useHighRes: ResponsiveUtils.isDesktop(context),
+            );
+          },
+          childCount: cardState.cards.length,
+        ),
       ),
-      itemCount: cardState.cards.length,
-      itemBuilder: (context, index) {
-        final card = cardState.cards[index];
-        return CardGridItem(
-          card: card,
-          useHighRes: ResponsiveUtils.isDesktop(context),
-        );
-      },
     );
   }
 
-  Widget _buildCardListView(CardState cardState) {
-    return ListView.builder(
-      controller: _scrollController,
-      padding: ResponsiveUtils.getScreenPadding(context),
-      itemCount: cardState.cards.length,
-      itemBuilder: (context, index) {
-        final card = cardState.cards[index];
-        return CardListItem(
-          card: card,
-          height: ResponsiveUtils.getListItemHeight(context),
-        );
-      },
+  Widget _buildCardList(CardState cardState) {
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          final card = cardState.cards[index];
+          return CardListItem(
+            card: card,
+            height: ResponsiveUtils.getListItemHeight(context),
+          );
+        },
+        childCount: cardState.cards.length,
+      ),
     );
   }
 
@@ -251,10 +180,10 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () =>
-                  ref.read(cardNotifierProvider.notifier).refreshCards(),
-              child: const Text('Retry'),
+            ElevatedButton.icon(
+              onPressed: _handleRefresh,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
             ),
           ],
         ),
@@ -295,6 +224,24 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showFilterBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      constraints: BoxConstraints(
+        maxWidth: ResponsiveUtils.getDialogWidth(context),
+      ),
+      builder: (context) => FilterBottomSheet(
+        currentFilters: ref.read(cardNotifierProvider).filterOptions ??
+            const CardFilterOptions(),
+        onFilterChanged: (filters) {
+          ref.read(cardNotifierProvider.notifier).updateFilters(filters);
+        },
       ),
     );
   }

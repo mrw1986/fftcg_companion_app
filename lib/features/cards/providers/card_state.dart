@@ -15,6 +15,9 @@ class CardState {
   final bool isGridView;
   final String? searchQuery;
   final CardFilterOptions? filterOptions;
+  final bool isLoading;
+  final bool hasReachedEnd;
+  final int currentPage;
 
   const CardState({
     this.status = CardLoadingStatus.initial,
@@ -23,6 +26,9 @@ class CardState {
     this.isGridView = true,
     this.searchQuery,
     this.filterOptions,
+    this.isLoading = false,
+    this.hasReachedEnd = false,
+    this.currentPage = 0,
   });
 
   CardState copyWith({
@@ -32,6 +38,9 @@ class CardState {
     bool? isGridView,
     String? searchQuery,
     CardFilterOptions? filterOptions,
+    bool? isLoading,
+    bool? hasReachedEnd,
+    int? currentPage,
   }) {
     return CardState(
       status: status ?? this.status,
@@ -40,6 +49,9 @@ class CardState {
       isGridView: isGridView ?? this.isGridView,
       searchQuery: searchQuery ?? this.searchQuery,
       filterOptions: filterOptions ?? this.filterOptions,
+      isLoading: isLoading ?? this.isLoading,
+      hasReachedEnd: hasReachedEnd ?? this.hasReachedEnd,
+      currentPage: currentPage ?? this.currentPage,
     );
   }
 }

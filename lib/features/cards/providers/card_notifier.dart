@@ -14,6 +14,7 @@ class CardNotifier extends StateNotifier<CardState> {
   final CardCacheService _cacheService;
   final LoggerService _logger;
   StreamSubscription? _cardsSubscription;
+  static const int _pageSize = 20;
 
   CardNotifier({
     required CardRepository repository,
@@ -27,8 +28,9 @@ class CardNotifier extends StateNotifier<CardState> {
   }
 
   Future<void> _initializeCards() async {
-    _logger.info('Initializing cards stream');
     try {
+      state = state.copyWith(status: CardLoadingStatus.loading);
+
       // Initialize Hive
       await _repository.initialize();
 
@@ -37,7 +39,9 @@ class CardNotifier extends StateNotifier<CardState> {
         state = state.copyWith(filterOptions: savedFilters);
         _logger.info('Restored saved filters: ${savedFilters.toJson()}');
       }
-      _watchCards();
+
+      // Load initial page
+      await loadNextPage(refresh: true);
     } catch (e, stackTrace) {
       _logger.severe('Error initializing cards', e, stackTrace);
       state = state.copyWith(
@@ -47,166 +51,54 @@ class CardNotifier extends StateNotifier<CardState> {
     }
   }
 
-  void _watchCards() {
-    state = state.copyWith(status: CardLoadingStatus.loading);
-
-    _cardsSubscription?.cancel();
+Future<void> loadNextPage({bool refresh = false}) async {
+    if (state.isLoading || (state.hasReachedEnd && !refresh)) return;
 
     try {
-      _cardsSubscription = _repository
-          .watchCards(
-            searchQuery: state.searchQuery,
-            elements: state.filterOptions?.elements,
-            cardType: state.filterOptions?.cardType,
-            cost: state.filterOptions?.costs?.join(','),
-          )
-          .handleError((error, stackTrace) {
-            _logger.severe('Error in cards stream', error, stackTrace);
-            state = state.copyWith(
-              status: CardLoadingStatus.error,
-              errorMessage: 'Failed to load cards: ${error.toString()}',
-            );
-          })
-          .map((cards) => _applyFiltersAndSort(cards))
-          .listen(
-            (cards) {
-              state = state.copyWith(
-                status: CardLoadingStatus.loaded,
-                cards: cards,
-                errorMessage: null,
-              );
-              _logger.info('Cards loaded and sorted: ${cards.length}');
-            },
-            onError: (error, stackTrace) {
-              state = state.copyWith(
-                status: CardLoadingStatus.error,
-                errorMessage: 'Failed to load cards',
-              );
-              _logger.severe('Error loading cards', error, stackTrace);
-            },
-          );
+      state = state.copyWith(isLoading: true);
+
+      final page = refresh ? 0 : state.currentPage + 1;
+      final List<FFTCGCard> cards =
+          await _repository.getCardsPage(page); // Add explicit type here
+
+      if (cards.isEmpty && page == 0) {
+        state = state.copyWith(
+          status: CardLoadingStatus.loaded,
+          cards: [],
+          hasReachedEnd: true,
+          isLoading: false,
+          currentPage: 0,
+        );
+        return;
+      }
+
+      if (cards.length < _pageSize) {
+        state = state.copyWith(hasReachedEnd: true);
+      }
+
+      final updatedCards = refresh ? cards : [...state.cards, ...cards];
+
+      state = state.copyWith(
+        status: CardLoadingStatus.loaded,
+        cards: updatedCards,
+        isLoading: false,
+        currentPage: page,
+        errorMessage: null,
+      );
+
+      _logger.info('Loaded page $page with ${cards.length} cards');
     } catch (e, stackTrace) {
-      _logger.severe('Error setting up cards stream', e, stackTrace);
+      _logger.severe('Error loading cards page', e, stackTrace);
       state = state.copyWith(
         status: CardLoadingStatus.error,
-        errorMessage: 'Failed to initialize card loading',
+        errorMessage: 'Failed to load cards: ${e.toString()}',
+        isLoading: false,
       );
     }
   }
 
-  // Add error recovery method
-  Future<void> retryLoading() async {
-    try {
-      state = state.copyWith(status: CardLoadingStatus.loading);
-      await _repository.initialize();
-      _watchCards();
-    } catch (e, stackTrace) {
-      _logger.severe('Error retrying card load', e, stackTrace);
-      state = state.copyWith(
-        status: CardLoadingStatus.error,
-        errorMessage: 'Failed to reload cards: ${e.toString()}',
-      );
-    }
-  }
-  List<FFTCGCard> _applyFiltersAndSort(List<FFTCGCard> cards) {
-    var filteredCards = List<FFTCGCard>.from(cards);
-    final filters = state.filterOptions;
-
-    if (filters != null) {
-      // Apply additional filters
-      if (filters.rarities?.isNotEmpty ?? false) {
-        filteredCards = filteredCards
-            .where((card) => filters.rarities!.contains(card.rarity))
-            .toList();
-      }
-
-      if (filters.job != null) {
-        filteredCards = filteredCards
-            .where(
-                (card) => card.job?.toLowerCase() == filters.job?.toLowerCase())
-            .toList();
-      }
-
-      if (filters.category != null) {
-        filteredCards = filteredCards
-            .where((card) =>
-                card.category?.toLowerCase() == filters.category?.toLowerCase())
-            .toList();
-      }
-
-      if (filters.opus?.isNotEmpty ?? false) {
-        filteredCards = filteredCards.where((card) {
-          final cardOpus = card.cardNumber?.split('-').first;
-          return filters.opus!.contains(cardOpus);
-        }).toList();
-      }
-
-      if (filters.powerRange != null) {
-        final range = filters.powerRange!.split('-');
-        if (range.length == 2) {
-          final minPower = int.tryParse(range[0]) ?? 0;
-          final maxPower = int.tryParse(range[1]) ?? 0;
-          filteredCards = filteredCards.where((card) {
-            final power = int.tryParse(card.power ?? '') ?? 0;
-            return power >= minPower && power <= maxPower;
-          }).toList();
-        }
-      }
-
-      // Apply sorting
-      switch (filters.sortOption) {
-        case CardSortOption.nameAsc:
-        case CardSortOption.nameDesc:
-          filteredCards.sort((a, b) => filters.ascending
-              ? a.name.compareTo(b.name)
-              : b.name.compareTo(a.name));
-          break;
-
-        case CardSortOption.costAsc:
-        case CardSortOption.costDesc:
-          filteredCards.sort((a, b) {
-            final aCost = int.tryParse(a.cost ?? '') ?? 0;
-            final bCost = int.tryParse(b.cost ?? '') ?? 0;
-            return filters.ascending
-                ? aCost.compareTo(bCost)
-                : bCost.compareTo(aCost);
-          });
-          break;
-
-        case CardSortOption.powerAsc:
-        case CardSortOption.powerDesc:
-          filteredCards.sort((a, b) {
-            final aPower = int.tryParse(a.power ?? '') ?? 0;
-            final bPower = int.tryParse(b.power ?? '') ?? 0;
-            return filters.ascending
-                ? aPower.compareTo(bPower)
-                : bPower.compareTo(aPower);
-          });
-          break;
-
-        case CardSortOption.setNumber:
-          filteredCards.sort((a, b) {
-            final aNumber = a.cardNumber ?? '';
-            final bNumber = b.cardNumber ?? '';
-            return filters.ascending
-                ? aNumber.compareTo(bNumber)
-                : bNumber.compareTo(aNumber);
-          });
-          break;
-
-        case CardSortOption.releaseDate:
-          filteredCards.sort((a, b) {
-            final aDate = a.modifiedOn ?? '';
-            final bDate = b.modifiedOn ?? '';
-            return filters.ascending
-                ? aDate.compareTo(bDate)
-                : bDate.compareTo(aDate);
-          });
-          break;
-      }
-    }
-
-    return filteredCards;
+  Future<void> refreshCards() async {
+    await loadNextPage(refresh: true);
   }
 
   void toggleViewMode() {
@@ -221,7 +113,7 @@ class CardNotifier extends StateNotifier<CardState> {
       filterOptions: options,
     );
     _cacheService.saveFilterOptions(options);
-    _watchCards();
+    refreshCards();
   }
 
   void updateSearchQuery(String? query) {
@@ -232,12 +124,7 @@ class CardNotifier extends StateNotifier<CardState> {
       searchQuery: query,
       status: CardLoadingStatus.loading,
     );
-    _watchCards();
-  }
-
-  Future<void> refreshCards() async {
-    _logger.info('Manually refreshing cards');
-    _watchCards();
+    refreshCards();
   }
 
   @override

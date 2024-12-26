@@ -1,3 +1,5 @@
+// lib/core/services/sync_service.dart
+
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,21 @@ import 'hive_service.dart';
 import '../../features/cards/models/fftcg_card.dart';
 import '../../features/auth/providers/auth_providers.dart';
 import '../../features/auth/services/auth_service.dart';
+import 'connectivity_service.dart';
+
+class SyncResult {
+  final bool success;
+  final String? error;
+  final int itemsSynced;
+  final DateTime timestamp;
+
+  SyncResult({
+    required this.success,
+    this.error,
+    this.itemsSynced = 0,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+}
 
 class SyncService {
   final HiveService _hiveService;
@@ -15,9 +32,13 @@ class SyncService {
   final Ref _ref;
   final FirebaseFirestore _firestore;
   final AuthService _authService;
+  final ConnectivityService _connectivityService;
 
   Timer? _syncTimer;
   bool _isSyncing = false;
+
+  static const int _batchSize = 500;
+  static const String _lastSyncKey = 'last_sync_timestamp';
 
   SyncService({
     required HiveService hiveService,
@@ -25,11 +46,13 @@ class SyncService {
     FirebaseFirestore? firestore,
     LoggerService? logger,
     AuthService? authService,
+    ConnectivityService? connectivityService,
   })  : _hiveService = hiveService,
         _ref = ref,
         _firestore = firestore ?? FirebaseFirestore.instance,
         _logger = logger ?? LoggerService(),
-        _authService = authService ?? AuthService();
+        _authService = authService ?? AuthService(),
+        _connectivityService = connectivityService ?? ConnectivityService();
 
   void dispose() {
     stopPeriodicSync();
@@ -50,26 +73,40 @@ class SyncService {
     _logger.info('Stopped periodic sync');
   }
 
-  Future<void> syncPendingChanges() async {
+  Future<SyncResult> syncPendingChanges() async {
     if (_isSyncing) {
-      _logger.info('Sync already in progress, skipping');
-      return;
+      return SyncResult(
+        success: false,
+        error: 'Sync already in progress',
+      );
     }
 
     _isSyncing = true;
     _logger.info('Starting sync of pending changes');
 
     try {
+      if (!await _connectivityService.hasStableConnection()) {
+        return SyncResult(
+          success: false,
+          error: 'No stable connection available',
+        );
+      }
+
       final isGuest = await _authService.isGuestSession();
       if (isGuest) {
         _logger.info('Skipping sync for guest user');
-        return;
+        return SyncResult(
+          success: true,
+          error: 'Guest user, sync skipped',
+        );
       }
 
       final user = _ref.read(currentUserProvider);
       if (user == null) {
-        _logger.info('No user logged in, skipping sync');
-        return;
+        return SyncResult(
+          success: false,
+          error: 'No user logged in',
+        );
       }
 
       final pendingCards = _hiveService
@@ -80,42 +117,59 @@ class SyncService {
       _logger.info('Found ${pendingCards.length} cards pending sync');
 
       if (pendingCards.isEmpty) {
-        return;
+        return SyncResult(success: true);
       }
 
-      // Process in batches of 500
-      for (var i = 0; i < pendingCards.length; i += 500) {
-        var batch = _firestore.batch();
-        final end =
-            (i + 500 < pendingCards.length) ? i + 500 : pendingCards.length;
+      // Process in batches
+      int totalSynced = 0;
+      for (var i = 0; i < pendingCards.length; i += _batchSize) {
+        final end = (i + _batchSize < pendingCards.length)
+            ? i + _batchSize
+            : pendingCards.length;
         final currentBatch = pendingCards.sublist(i, end);
 
-        final userCardsCollection =
-            _firestore.collection('users').doc(user.id).collection('cards');
-
-        for (final card in currentBatch) {
-          final docRef = userCardsCollection.doc(card.cardNumber);
-          batch.set(
-              docRef,
-              {
-                ...card.toMap(),
-                'lastModified': FieldValue.serverTimestamp(),
-                'syncStatus': 'synced',
-              },
-              SetOptions(merge: true));
-        }
-
-        await batch.commit();
-        await _updateLocalSyncStatus(currentBatch);
+        await _syncBatch(user.id, currentBatch);
+        totalSynced += currentBatch.length;
       }
 
       await _updateLastSyncTime();
       _logger.info('Sync completed successfully');
+
+      return SyncResult(
+        success: true,
+        itemsSynced: totalSynced,
+      );
     } catch (e, stackTrace) {
       _logger.severe('Error during sync', e, stackTrace);
+      return SyncResult(
+        success: false,
+        error: e.toString(),
+      );
     } finally {
       _isSyncing = false;
     }
+  }
+
+  Future<void> _syncBatch(String userId, List<FFTCGCard> cards) async {
+    final batch = _firestore.batch();
+    final userCardsCollection =
+        _firestore.collection('users').doc(userId).collection('cards');
+
+    for (final card in cards) {
+      final docRef = userCardsCollection.doc(card.cardNumber);
+      batch.set(
+        docRef,
+        {
+          ...card.toMap(),
+          'lastModified': FieldValue.serverTimestamp(),
+          'syncStatus': 'synced',
+        },
+        SetOptions(merge: true),
+      );
+    }
+
+    await batch.commit();
+    await _updateLocalSyncStatus(cards);
   }
 
   Future<void> _updateLocalSyncStatus(List<FFTCGCard> cards) async {
@@ -129,7 +183,6 @@ class SyncService {
     try {
       _logger.info('Starting conversion revert for user: $userId');
 
-      // Delete uploaded data
       await _firestore
           .collection('users')
           .doc(userId)
@@ -141,7 +194,6 @@ class SyncService {
         }
       });
 
-      // Reset local sync status
       final localCards = _hiveService.getAllCards();
       for (final card in localCards) {
         card.markForSync();
@@ -193,7 +245,7 @@ class SyncService {
   Future<DateTime?> getLastSyncTime() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final timestamp = prefs.getInt('last_sync_timestamp');
+      final timestamp = prefs.getInt(_lastSyncKey);
       return timestamp != null
           ? DateTime.fromMillisecondsSinceEpoch(timestamp)
           : null;
@@ -207,7 +259,7 @@ class SyncService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(
-        'last_sync_timestamp',
+        _lastSyncKey,
         DateTime.now().millisecondsSinceEpoch,
       );
     } catch (e, stackTrace) {

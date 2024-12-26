@@ -111,27 +111,30 @@ class FFTCGCard extends HiveObject {
   factory FFTCGCard.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return FFTCGCard(
-      categoryId: data['categoryId'] as int,
-      cleanName: data['cleanName'] as String,
-      extendedData: (data['extendedData'] as List<dynamic>)
-          .map((e) => CardExtendedData.fromMap(e as Map<String, dynamic>))
-          .toList(),
-      groupHash: data['groupHash'] as String,
-      groupId: data['groupId'] as int,
-      highResUrl: data['highResUrl'] as String,
-      imageCount: data['imageCount'] as int,
+      categoryId: data['categoryId'] as int? ?? 0,
+      cleanName: data['cleanName'] as String? ?? '',
+      extendedData: (data['extendedData'] as List<dynamic>?)
+              ?.map((e) => CardExtendedData.fromMap(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      groupHash: data['groupHash'] as String? ?? '',
+      groupId: data['groupId'] as int? ?? 0,
+      highResUrl: data['highResUrl'] as String? ?? '',
+      imageCount: data['imageCount'] as int? ?? 0,
       imageMetadata: CardImageMetadata.fromMap(
-        data['imageMetadata'] as Map<String, dynamic>,
+        (data['imageMetadata'] as Map<String, dynamic>?) ?? {},
       ),
-      lastUpdated: (data['lastUpdated'] as Timestamp).toDate(),
-      lowResUrl: data['lowResUrl'] as String,
+      lastUpdated:
+          (data['lastUpdated'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      lowResUrl: data['lowResUrl'] as String? ?? '',
       modifiedOn: data['modifiedOn'] as String?,
-      name: data['name'] as String,
-      originalUrl: data['originalUrl'] as String,
-      isPresale:
-          (data['presaleInfo'] as Map<String, dynamic>)['isPresale'] as bool,
-      productId: data['productId'] as int,
-      url: data['url'] as String,
+      name: data['name'] as String? ?? '',
+      originalUrl: data['originalUrl'] as String? ?? '',
+      isPresale: (data['presaleInfo'] as Map<String, dynamic>?)?['isPresale']
+              as bool? ??
+          false,
+      productId: data['productId'] as int? ?? 0,
+      url: data['url'] as String? ?? '',
     );
   }
 
