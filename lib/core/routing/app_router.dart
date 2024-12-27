@@ -113,17 +113,23 @@ class ScaffoldWithNavBar extends ConsumerWidget {
 
   static int _calculateSelectedIndex(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
-    final router = GoRouter.of(context);
 
     if (location == '/settings') {
-      // Get the previous route
-      final matches = router.routerDelegate.currentConfiguration.matches;
-      if (matches.length > 1) {
-        final previousLocation = matches[matches.length - 2].matchedLocation;
-        return _getIndexForLocation(previousLocation);
+      // Get the full navigation stack
+      final router = GoRouter.of(context);
+      final routes = router.routerDelegate.currentConfiguration.matches;
+
+      // Find the last non-settings route in the stack
+      for (var i = routes.length - 1; i >= 0; i--) {
+        final route = routes[i].matchedLocation;
+        if (route != '/settings') {
+          return _getIndexForLocation(route);
+        }
       }
     }
 
+    // Return the index for the current location if not in settings
+    // or if no previous route was found
     return _getIndexForLocation(location);
   }
 
