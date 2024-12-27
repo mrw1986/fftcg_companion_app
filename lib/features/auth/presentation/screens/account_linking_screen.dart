@@ -1,11 +1,11 @@
 // lib/features/auth/presentation/screens/account_linking_screen.dart
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/auth_button.dart';
 import '../widgets/auth_text_field.dart';
 import '../../providers/auth_providers.dart';
 import '../../enums/auth_status.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class AccountLinkingScreen extends ConsumerStatefulWidget {
   const AccountLinkingScreen({super.key});
@@ -95,7 +95,22 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
     final authState = ref.watch(authNotifierProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Link Account')),
+      appBar: AppBar(
+        title: const Text('Link Account'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () =>
+                Navigator.of(context).popUntil((route) => route.isFirst),
+            tooltip: 'Close',
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -107,7 +122,6 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
             ),
             const SizedBox(height: 24),
             AuthButton(
-              // Removed color parameter
               text: 'Link Google Account',
               onPressed: _isLoading ? null : _linkWithGoogle,
               isLoading: _isLoading && authState.status == AuthStatus.loading,
@@ -149,9 +163,9 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
                       }
                       return null;
                     },
-                 ),
+                  ),
                   const SizedBox(height: 16),
-                  AuthButton( // Removed color parameter
+                  AuthButton(
                     text: 'Link Email/Password Account',
                     onPressed: _isLoading ? null : _linkWithEmailPassword,
                     isLoading:

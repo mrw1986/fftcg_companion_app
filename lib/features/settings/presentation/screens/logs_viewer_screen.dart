@@ -49,36 +49,54 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
   Future<void> _shareLogs() async {
     try {
       final logs = await _logger.getLogs(errorLogsOnly: _showErrorLogsOnly);
+
+      // Verify widget is still mounted before proceeding
+      if (!mounted) return;
+
       final tempDir = await getTemporaryDirectory();
+      if (!mounted) return;
+
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'FFTCG_Companion_Logs_$timestamp.txt';
-      final filePath = '${tempDir.path}/$fileName';
-      final file = File(filePath);
+      final file = File('${tempDir.path}/$fileName');
       await file.writeAsString(logs);
 
-      await Share.shareXFiles(
-        [
-          XFile(
-            filePath,
-            name: fileName,
-            mimeType: 'text/plain',
-          ),
-        ],
-        subject: fileName,
-        text: 'FFTCG Companion Logs', // Description
-        sharePositionOrigin: const Rect.fromLTWH(0, 0, 10, 10),
+      if (!mounted) return;
+
+      final box = context.findRenderObject() as RenderBox?;
+      if (!mounted) return;
+
+      // Don't use subject field as it affects Google Drive filename
+      final result = await Share.shareXFiles(
+        [XFile(file.path, name: fileName)], // Explicitly set the name
+        text: fileName, // Use text instead of subject
+        sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size,
       );
 
-      // Clean up
-      if (await file.exists()) {
-        await file.delete();
+      if (!mounted) return;
+
+      if (result.status == ShareResultStatus.success) {
+        _logger.info('Logs shared successfully');
+      } else if (result.status == ShareResultStatus.dismissed) {
+        _logger.info('Share dialog dismissed');
       }
+
+      // Clean up after delay
+      Future.delayed(const Duration(seconds: 5), () async {
+        try {
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (_) {
+          // Ignore cleanup errors
+        }
+      });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to share logs: $e')),
-        );
-      }
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to share logs: $e')),
+      );
     }
   }
 
@@ -121,6 +139,11 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('App Logs'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        automaticallyImplyLeading: false, // Add this
         actions: [
           IconButton(
             icon: const Icon(Icons.copy),
@@ -141,6 +164,12 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: _loadLogs,
             tooltip: 'Refresh logs',
+          ),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context)
+                .popUntil((route) => route.isFirst), // Pop to root
+            tooltip: 'Close',
           ),
         ],
       ),
