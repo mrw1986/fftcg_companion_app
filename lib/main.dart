@@ -1,7 +1,6 @@
 // lib/main.dart
 
 import 'dart:async';
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -10,19 +9,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io' show Platform;
 import 'core/logging/logger_service.dart';
-import 'core/providers/root_route_history_notifier.dart';
 import 'core/theme/app_theme.dart';
 import 'features/cards/providers/card_providers.dart';
 import 'firebase_options.dart.bak';
-import 'features/auth/presentation/auth_wrapper.dart';
-import 'features/cards/presentation/screens/cards_screen.dart';
-import 'features/collection/presentation/screens/collection_screen.dart';
-import 'features/decks/presentation/screens/decks_screen.dart';
-import 'features/scanner/presentation/screens/scanner_screen.dart';
-import 'features/profile/presentation/screens/profile_screen.dart';
-import 'features/settings/presentation/screens/settings_screen.dart';
 import 'features/settings/providers/settings_providers.dart';
 import 'services/app_check_service.dart';
+import 'core/routing/app_router.dart';
 
 Future<void> main() async {
   await runZonedGuarded(() async {
@@ -166,8 +158,9 @@ class FFTCGCompanionApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     final themeColor = ref.watch(themeColorProvider);
+    final router = ref.watch(routerProvider);
 
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'FFTCG Companion',
       theme: AppTheme.lightTheme.copyWith(
         colorScheme: AppTheme.lightTheme.colorScheme.copyWith(
@@ -182,157 +175,15 @@ class FFTCGCompanionApp extends ConsumerWidget {
         ),
       ),
       themeMode: themeMode,
-      home: const AuthWrapper(),
+      routerConfig: router,
       debugShowCheckedModeBanner: false,
       builder: (context, child) {
         return MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.0)),
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(1.0)),
           child: child!,
         );
       },
-    );
-  }
-}
-
-class MainTabScreen extends ConsumerStatefulWidget {
-  final VoidCallback handleLogout;
-
-  const MainTabScreen({
-    super.key,
-    required this.handleLogout,
-  });
-
-  @override
-  ConsumerState<MainTabScreen> createState() => _MainTabScreenState();
-}
-
-class _MainTabScreenState extends ConsumerState<MainTabScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  DateTime? _lastBackPress;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 5, vsync: this)
-      ..addListener(_handleTabChange);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  void _handleTabChange() {
-    if (!_tabController.indexIsChanging) {
-      ref
-          .read(rootRouteHistoryProvider.notifier)
-          .addHistory(_tabController.index);
-    }
-  }
-
-  Future<void> _handleBackNavigation(bool didPop, dynamic result) async {
-    if (didPop) return;
-
-    final navigator = Navigator.of(context);
-
-    // First check if current route can be popped
-    if (navigator.canPop()) {
-      navigator.pop();
-      return;
-    }
-
-    // Handle tab navigation using history
-    final history = ref.read(rootRouteHistoryProvider);
-    if (history.length > 1) {
-      ref.read(rootRouteHistoryProvider.notifier).removeLastHistory();
-      setState(() {
-        _tabController.index = ref.read(rootRouteHistoryProvider).last;
-      });
-      return;
-    }
-
-    // Handle app exit (only on home tab)
-    if (_tabController.index == 0) {
-      final now = DateTime.now();
-      if (_lastBackPress == null ||
-          now.difference(_lastBackPress!) > const Duration(seconds: 2)) {
-        _lastBackPress = now;
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Press back again to exit'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-        return;
-      }
-      await SystemNavigator.pop();
-      return;
-    }
-
-    // If on any other tab, go back to home tab
-    setState(() {
-      ref.read(rootRouteHistoryProvider.notifier).clearHistory();
-      _tabController.index = 0;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: _handleBackNavigation,
-      child: DefaultTabController(
-        length: 5,
-        child: Scaffold(
-          appBar: AppBar(
-            title: const Text('FFTCG Companion'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.settings),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => SettingsScreen(
-                        handleLogout: widget.handleLogout,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-            bottom: TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontSize: 14,
-                  ),
-              tabAlignment: TabAlignment.start,
-              tabs: const [
-                Tab(icon: Icon(Icons.grid_view), text: 'Cards'),
-                Tab(icon: Icon(Icons.collections_bookmark), text: 'Collection'),
-                Tab(icon: Icon(Icons.style), text: 'Decks'),
-                Tab(icon: Icon(Icons.camera_alt), text: 'Scanner'),
-                Tab(icon: Icon(Icons.person), text: 'Profile'),
-              ],
-            ),
-          ),
-          body: TabBarView(
-            controller: _tabController,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              CardsScreen(handleLogout: widget.handleLogout),
-              const CollectionScreen(),
-              const DecksScreen(),
-              const ScannerScreen(),
-              ProfileScreen(handleLogout: widget.handleLogout),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

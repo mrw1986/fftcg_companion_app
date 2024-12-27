@@ -25,10 +25,7 @@ class ProfileScreen extends ConsumerWidget {
     final stats = ref.watch(userStatsProvider);
     final themeColor = Theme.of(context).colorScheme.primary;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-      ),
+    return Scaffold(      
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(userStatsProvider);

@@ -26,9 +26,6 @@ class SettingsScreen extends ConsumerWidget {
     final logger = LoggerService();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final content = ListView(

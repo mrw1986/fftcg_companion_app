@@ -5,11 +5,8 @@ class ScannerScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Card Scanner'),
-      ),
-      body: const Center(
+    return const Scaffold(      
+      body: Center(
         child: Text('Scanner Screen - Coming Soon'),
       ),
     );

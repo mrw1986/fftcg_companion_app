@@ -5,11 +5,8 @@ class CollectionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Collection'),
-      ),
-      body: const Center(
+    return const Scaffold(      
+      body: Center(
         child: Text('Collection Screen - Coming Soon'),
       ),
     );

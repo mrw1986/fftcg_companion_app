@@ -5,11 +5,8 @@ class DecksScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Decks'),
-      ),
-      body: const Center(
+    return const Scaffold(      
+      body: Center(
         child: Text('Decks Screen - Coming Soon'),
       ),
     );

@@ -12,12 +12,7 @@ import '../widgets/search_bar_widget.dart';
 import '../../providers/card_state.dart';
 
 class CardsScreen extends ConsumerStatefulWidget {
-  final VoidCallback handleLogout;
-
-  const CardsScreen({
-    super.key,
-    required this.handleLogout,
-  });
+  const CardsScreen({super.key});
 
   @override
   ConsumerState<CardsScreen> createState() => _CardsScreenState();
@@ -76,7 +71,7 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
     final cardState = ref.watch(cardNotifierProvider);
     final themeColor = Theme.of(context).colorScheme.primary;
 
-    return Scaffold(
+    return Scaffold(      
       body: RefreshIndicator(
         onRefresh: _handleRefresh,
         child: CustomScrollView(
@@ -244,5 +239,5 @@ class _CardsScreenState extends ConsumerState<CardsScreen> {
         },
       ),
     );
-  }
+  }  
 }

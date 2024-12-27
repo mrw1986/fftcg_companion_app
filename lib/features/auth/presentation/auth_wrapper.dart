@@ -5,13 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../enums/auth_status.dart';
 import '../providers/auth_providers.dart';
-import 'screens/login_screen.dart';
-import '../../cards/providers/card_providers.dart';
-import '../../../main.dart';
 import '../presentation/widgets/email_verification_dialog.dart';
+import '../../../core/logging/logger_service.dart';
+import 'package:go_router/go_router.dart';
 
 class AuthWrapper extends ConsumerStatefulWidget {
-  const AuthWrapper({super.key});
+  final Widget child;
+
+  const AuthWrapper({
+    super.key,
+    required this.child,
+  });
 
   @override
   ConsumerState<AuthWrapper> createState() => _AuthWrapperState();
@@ -20,6 +24,7 @@ class AuthWrapper extends ConsumerStatefulWidget {
 class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   Timer? _emailVerificationTimer;
   bool _showingDialog = false;
+  final _logger = LoggerService();
 
   @override
   void initState() {
@@ -43,6 +48,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
 
   void _checkEmailVerification() {
     if (!mounted) return;
+
     final authState = ref.read(authNotifierProvider);
     final user = authState.user;
 
@@ -62,9 +68,6 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     setState(() => _showingDialog = true);
 
     try {
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
-      final theme = Theme.of(context);
-
       if (!mounted) return;
 
       await showDialog(
@@ -78,37 +81,40 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
                   .read(authNotifierProvider.notifier)
                   .sendEmailVerification();
               if (!mounted) return;
-              scaffoldMessenger.showSnackBar(
+              ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Verification email sent')),
               );
             } catch (e) {
+              _logger.severe('Failed to send verification email', e);
               if (!mounted) return;
-              scaffoldMessenger.showSnackBar(
+              ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('Failed to send verification email: $e'),
-                  backgroundColor: theme.colorScheme.error,
+                  backgroundColor: Theme.of(context).colorScheme.error,
                 ),
               );
             }
           },
           onCancel: () async {
-            // Store navigator before async gap
-            final navigator = Navigator.of(dialogContext);
-            await ref.read(authNotifierProvider.notifier).signOut();
-
-            if (dialogContext.mounted) {
-              navigator.pop(); // Close dialog
-            }
-
-            if (mounted) {
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                (route) => false,
+            try {
+              await ref.read(authNotifierProvider.notifier).signOut();
+              if (!mounted) return;
+              context.go('/auth/login');
+            } catch (e) {
+              _logger.severe('Error during verification cancel/logout', e);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error signing out: $e'),
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                ),
               );
             }
           },
         ),
       );
+    } catch (e) {
+      _logger.severe('Error showing verification dialog', e);
     } finally {
       if (mounted) {
         setState(() => _showingDialog = false);
@@ -116,39 +122,51 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     }
   }
 
-  Future<void> _handleLogout() async {
-    try {
-      await ref.read(authNotifierProvider.notifier).signOut();
-      ref.invalidate(cardNotifierProvider);
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Successfully logged out')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error signing out: $e')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
 
-    return switch (authState.status) {
-      AuthStatus.authenticated || AuthStatus.guest => MainTabScreen(
-          handleLogout: _handleLogout,
+    // Show loading screen while checking auth status
+    if (authState.status == AuthStatus.initial) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // Handle error state
+    if (authState.status == AuthStatus.error) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Authentication Error',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              if (authState.errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    authState.errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              ElevatedButton(
+                onPressed: () => context.go('/auth/login'),
+                child: const Text('Return to Login'),
+              ),
+            ],
+          ),
         ),
-      AuthStatus.unauthenticated => const LoginScreen(),
-      AuthStatus.loading => const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
-      AuthStatus.error => const LoginScreen(),
-      AuthStatus.initial => const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
-    };
+      );
+    }
+
+    // If we get here, we're either authenticated or a guest
+    // The router will handle redirecting unauthenticated users
+    return widget.child;
   }
 }
