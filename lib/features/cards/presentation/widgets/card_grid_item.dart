@@ -1,10 +1,11 @@
 // lib/features/cards/presentation/widgets/card_grid_item.dart
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../models/fftcg_card.dart';
 import '../screens/card_detail_screen.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class CardGridItem extends StatelessWidget {
   final FFTCGCard card;
@@ -18,24 +19,14 @@ class CardGridItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isPhone = ResponsiveUtils.isPhone(context);
-    final elevation = isPhone ? 2.0 : 4.0;
-    final borderRadius = isPhone ? 8.0 : 12.0;
-
     return Card(
       clipBehavior: Clip.antiAlias,
-      elevation: elevation,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(borderRadius),
-      ),
       child: InkWell(
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => CardDetailScreen(card: card),
-            ),
-          );
-        },
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => CardDetailScreen(card: card),
+          ),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -43,18 +34,35 @@ class CardGridItem extends StatelessWidget {
               child: Hero(
                 tag: 'card_${card.cardNumber}',
                 child: CachedNetworkImage(
-                  imageUrl: useHighRes ? card.highResUrl : card.lowResUrl,
-                  fit: BoxFit.contain,
-                  memCacheWidth: useHighRes ? 400 : 200,
-                  memCacheHeight: useHighRes ? 560 : 280,
-                  placeholderFadeInDuration: const Duration(milliseconds: 300),
-                  placeholder: (context, url) => const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  errorWidget: (context, url, error) => const Center(
-                    child: Icon(Icons.error),
-                  ),
-                ),
+                    imageUrl: useHighRes ? card.highResUrl : card.lowResUrl,
+                    fit: BoxFit.contain,
+                    placeholder: (context, url) => const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    errorWidget: (context, url, error) => Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.error,
+                              color: Theme.of(context).colorScheme.error),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Image Error',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Update cache manager
+                    cacheManager: DefaultCacheManager(),
+                    maxHeightDiskCache: 500,
+                    maxWidthDiskCache: 500,
+                    memCacheHeight: useHighRes ? 1000 : 500,
+                    memCacheWidth: useHighRes ? 1000 : 500,
+                  )
               ),
             ),
             _buildCardInfo(context),

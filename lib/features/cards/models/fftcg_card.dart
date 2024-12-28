@@ -109,7 +109,12 @@ class FFTCGCard extends HiveObject {
   }
 
   factory FFTCGCard.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+
+    // Handle possible null imageMetadata
+    final imageMetadataMap =
+        (data['imageMetadata'] as Map<String, dynamic>?) ?? {};
+
     return FFTCGCard(
       categoryId: data['categoryId'] as int? ?? 0,
       cleanName: data['cleanName'] as String? ?? '',
@@ -121,9 +126,7 @@ class FFTCGCard extends HiveObject {
       groupId: data['groupId'] as int? ?? 0,
       highResUrl: data['highResUrl'] as String? ?? '',
       imageCount: data['imageCount'] as int? ?? 0,
-      imageMetadata: CardImageMetadata.fromMap(
-        (data['imageMetadata'] as Map<String, dynamic>?) ?? {},
-      ),
+      imageMetadata: CardImageMetadata.fromMap(imageMetadataMap),
       lastUpdated:
           (data['lastUpdated'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lowResUrl: data['lowResUrl'] as String? ?? '',

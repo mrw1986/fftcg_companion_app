@@ -55,10 +55,33 @@ class ScaffoldWithNavBar extends ConsumerWidget {
     final themeColor = ref.watch(themeColorProvider);
     final isSettingsScreen = location == '/settings';
 
+    // Update the hideSettings check to include the deep-linked screens
     final hideSettings = [
       '/settings/logs',
       '/auth/link',
     ].any((path) => location.startsWith(path));
+
+    final isDeepLinkedScreen = location.startsWith('/settings/logs') ||
+        location.startsWith('/auth/link');
+
+    // Calculate the current root route based on the selected navigation index
+    String getRootRoute() {
+      final selectedIndex = _calculateSelectedIndex(context);
+      switch (selectedIndex) {
+        case 0:
+          return '/';
+        case 1:
+          return '/collection';
+        case 2:
+          return '/decks';
+        case 3:
+          return '/scanner';
+        case 4:
+          return '/profile';
+        default:
+          return '/';
+      }
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -69,10 +92,10 @@ class ScaffoldWithNavBar extends ConsumerWidget {
               icon: const Icon(Icons.settings),
               onPressed: () => context.push('/settings'),
             ),
-          if (isSettingsScreen)
+          if (isSettingsScreen || isDeepLinkedScreen)
             IconButton(
               icon: const Icon(Icons.close),
-              onPressed: () => context.pop(),
+              onPressed: () => context.go(getRootRoute()),
             ),
         ],
       ),

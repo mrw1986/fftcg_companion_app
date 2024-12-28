@@ -102,15 +102,7 @@ class _AccountLinkingScreenState extends ConsumerState<AccountLinkingScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () =>
-                Navigator.of(context).popUntil((route) => route.isFirst),
-            tooltip: 'Close',
-          ),
-        ],
-      ),
+      ), // Removed the actions array with the X button
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(

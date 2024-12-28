@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../../../core/logging/logger_service.dart';
 import '../../cards/providers/card_providers.dart';
 
 // Constants for SharedPreferences keys
@@ -73,44 +74,89 @@ final logsProvider = StateNotifierProvider<LogsNotifier, List<LogEntry>>((ref) {
   return LogsNotifier(ref);
 });
 
+// Logs stream provider
+final logsStreamProvider = StreamProvider<String>((ref) async* {
+  while (true) {
+    final logs = await LoggerService().getLogs();
+    yield logs;
+    await Future.delayed(const Duration(seconds: 1));
+  }
+});
+
 // Logs notifier
 class LogsNotifier extends StateNotifier<List<LogEntry>> {
   final Ref _ref;
+  final LoggerService _logger = LoggerService();
+  static const int _maxLogEntries = 1000;
 
   LogsNotifier(this._ref) : super([]) {
     _loadLogs();
   }
 
   Future<void> _loadLogs() async {
-    final prefs = _ref.watch(sharedPreferencesProvider);
-    final logsJson = prefs.getStringList(_logsKey) ?? [];
-    state = logsJson
-        .map((json) =>
-            LogEntry.fromJson(Map<String, dynamic>.from(jsonDecode(json))))
-        .toList();
+    try {
+      final prefs = _ref.read(sharedPreferencesProvider);
+      final logsJson = prefs.getStringList(_logsKey) ?? [];
+      state = logsJson
+          .map((json) =>
+              LogEntry.fromJson(Map<String, dynamic>.from(jsonDecode(json))))
+          .toList();
+
+      // Trim old logs if exceeding max entries
+      if (state.length > _maxLogEntries) {
+        state = state.sublist(state.length - _maxLogEntries);
+        _saveLogs(); // Save the trimmed state
+      }
+    } catch (e) {
+      // If there's an error loading logs, start fresh
+      state = [];
+      clearLogs(); // Clear corrupted logs
+    }
   }
 
   Future<void> addLog(String message) async {
-    final user = FirebaseAuth.instance.currentUser;
-    final entry = LogEntry(
-      message: message,
-      timestamp: DateTime.now(),
-      userId: user?.uid,
-    );
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final entry = LogEntry(
+        message: message,
+        timestamp: DateTime.now(),
+        userId: user?.uid,
+      );
 
-    state = [...state, entry];
+      // Add new log and trim if necessary
+      final newState = [...state, entry];
+      if (newState.length > _maxLogEntries) {
+        newState.removeAt(0); // Remove oldest entry
+      }
+      state = newState;
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      _logsKey,
-      state.map((log) => jsonEncode(log.toJson())).toList(),
-    );
+      await _saveLogs();
+    } catch (e) {
+      _logger.severe('Error adding log', e); // Changed from print
+    }
+  }
+
+  Future<void> _saveLogs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        _logsKey,
+        state.map((log) => jsonEncode(log.toJson())).toList(),
+      );
+    } catch (e) {
+      _logger.severe('Error saving logs', e); // Changed from print
+    }
   }
 
   Future<void> clearLogs() async {
     state = [];
-    final prefs = _ref.watch(sharedPreferencesProvider); // Use _ref
+    final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_logsKey);
+  }
+
+  // Add method to get recent logs only
+  List<LogEntry> getRecentLogs([int count = 100]) {
+    return state.length <= count ? state : state.sublist(state.length - count);
   }
 }
 

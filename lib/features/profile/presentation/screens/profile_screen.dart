@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../../../models/user_model.dart';
 import '../../models/user_stats.dart';
@@ -10,14 +11,32 @@ import '../widgets/collection_stats.dart';
 import '../widgets/deck_stats.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../providers/user_stats_provider.dart';
+import '../../../../core/logging/logger_service.dart';
 
 class ProfileScreen extends ConsumerWidget {
   final VoidCallback handleLogout;
+  final _logger = LoggerService();
 
-  const ProfileScreen({
+  ProfileScreen({
     super.key,
     required this.handleLogout,
   });
+
+  Future<void> _handleLogout(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(authNotifierProvider.notifier).signOut();
+      if (context.mounted) {
+        context.go('/auth/login');
+      }
+    } catch (e, stackTrace) {
+      _logger.severe('Logout failed', e, stackTrace);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to logout: $e')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -25,7 +44,7 @@ class ProfileScreen extends ConsumerWidget {
     final stats = ref.watch(userStatsProvider);
     final themeColor = Theme.of(context).colorScheme.primary;
 
-    return Scaffold(      
+    return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(userStatsProvider);
@@ -56,6 +75,7 @@ class ProfileScreen extends ConsumerWidget {
             avatarUrl: user?.photoURL,
             avatarColor: themeColor,
             size: ResponsiveUtils.isPhone(context) ? 80 : 100,
+            onLogout: () => _handleLogout(context, WidgetRef as WidgetRef),
           ),
           const Divider(),
           _buildStats(context, stats),
@@ -81,6 +101,7 @@ class ProfileScreen extends ConsumerWidget {
               avatarUrl: user?.photoURL,
               avatarColor: themeColor,
               size: 120,
+              onLogout: () => _handleLogout(context, WidgetRef as WidgetRef),
             ),
             const Divider(),
             Row(
@@ -133,6 +154,7 @@ class ProfileScreen extends ConsumerWidget {
                     avatarUrl: user?.photoURL,
                     avatarColor: themeColor,
                     size: 150,
+                    onLogout: () => _handleLogout(context, WidgetRef as WidgetRef),
                   ),
                   const Divider(),
                 ],

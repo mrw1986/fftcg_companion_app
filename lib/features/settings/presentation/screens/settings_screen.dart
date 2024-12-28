@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:go_router/go_router.dart';
 import '../../providers/settings_providers.dart';
 import '../../../auth/presentation/screens/account_linking_screen.dart';
 import '../screens/logs_viewer_screen.dart';
@@ -249,10 +250,8 @@ class SettingsScreen extends ConsumerWidget {
         await ref.read(settingsNotifierProvider.notifier).logout();
         if (!context.mounted) return;
 
-        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Successfully logged out')),
-        );
+        // Replace old navigation with GoRouter
+        context.go('/auth/login');
         handleLogout();
       } catch (e) {
         logger.severe('Logout failed', e);

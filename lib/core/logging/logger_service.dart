@@ -150,28 +150,37 @@ Details: ${exception.toString()}''';
       final StringBuffer buffer = StringBuffer();
 
       if (!errorLogsOnly && _logFile != null && await _logFile!.exists()) {
-        buffer.writeln('=== General Logs ===');
         try {
           final String content = await _logFile!.readAsString();
-          buffer.writeln(content);
+          if (content.isNotEmpty) {
+            buffer.writeln('=== General Logs ===');
+            buffer.writeln(content);
+          }
         } catch (e) {
-          // Handle UTF-8 decoding errors by reading as bytes and decoding manually
+          // Handle UTF-8 decoding errors
           final List<int> bytes = await _logFile!.readAsBytes();
           final String content = String.fromCharCodes(bytes);
-          buffer.writeln(content);
+          if (content.isNotEmpty) {
+            buffer.writeln('=== General Logs ===');
+            buffer.writeln(content);
+          }
         }
       }
 
       if (_errorLogFile != null && await _errorLogFile!.exists()) {
-        buffer.writeln('=== Error Logs ===');
         try {
           final String content = await _errorLogFile!.readAsString();
-          buffer.writeln(content);
+          if (content.isNotEmpty) {
+            buffer.writeln('=== Error Logs ===');
+            buffer.writeln(content);
+          }
         } catch (e) {
-          // Handle UTF-8 decoding errors by reading as bytes and decoding manually
           final List<int> bytes = await _errorLogFile!.readAsBytes();
           final String content = String.fromCharCodes(bytes);
-          buffer.writeln(content);
+          if (content.isNotEmpty) {
+            buffer.writeln('=== Error Logs ===');
+            buffer.writeln(content);
+          }
         }
       }
 
@@ -179,7 +188,7 @@ Details: ${exception.toString()}''';
           ? buffer.toString()
           : 'No logs available';
     } catch (e, stackTrace) {
-      _logger.severe('Error reading logs', e, stackTrace);
+      severe('Error reading logs', e, stackTrace);
       return 'Error reading logs: $e';
     }
   }

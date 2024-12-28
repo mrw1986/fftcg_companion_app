@@ -20,7 +20,6 @@ class CardRepository {
   static const int _batchSize = 20;
   static const Duration _cacheExpiration = Duration(hours: 24);
   static const String _lastCacheTimeKey = 'last_cache_time';
-  static const String _lastPageKey = 'last_fetched_page';
 
   CardRepository({
     FirebaseFirestore? firestore,
@@ -32,7 +31,31 @@ class CardRepository {
         _hiveService = hiveService ?? HiveService(),
         _logger = logger ?? LoggerService(),
         _authService = authService ?? AuthService(),
-        _connectivityService = connectivityService ?? ConnectivityService();
+        _connectivityService = connectivityService ?? ConnectivityService();  
+
+  Future<void> _updateCacheTimestamp() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+      final success = await prefs.setInt(_lastCacheTimeKey, timestamp);
+      if (!success) {
+        throw CardRepositoryException(
+          'Failed to update cache timestamp',
+          code: 'cache-update-failed',
+        );
+      }
+
+      _logger.info('Cache timestamp updated successfully');
+    } catch (e, stackTrace) {
+      _logger.severe('Error updating cache timestamp', e, stackTrace);
+      throw CardRepositoryException(
+        'Failed to update cache timestamp',
+        code: 'cache-update-failed',
+        originalError: e,
+      );
+    }
+  }
 
   Stream<List<FFTCGCard>> watchCards({
     String? searchQuery,
@@ -124,69 +147,50 @@ class CardRepository {
 
   Future<List<FFTCGCard>> getCardsPage(int page) async {
     try {
-      // Check cache first
-      if (await _isCacheValid()) {
-        final cachedCards = _getLocalCardsPage(page);
-        if (cachedCards.isNotEmpty) {
-          _logger.info('Returning cached cards for page $page');
-          return cachedCards;
+      const pageSize = 20;
+      final start = page * pageSize;
+
+      // First check local cache
+      final localCards = _hiveService.getAllCards();
+      if (localCards.isNotEmpty) {
+        final end = start + pageSize;
+        if (start < localCards.length) {
+          return localCards.sublist(
+              start, end > localCards.length ? localCards.length : end);
         }
       }
 
-      // Check connectivity
-      final isConnected = await _connectivityService.hasStableConnection();
-      if (!isConnected) {
-        _logger.info('No connection, returning local cards for page $page');
-        return _getLocalCardsPage(page);
-      }
+      // If cache is empty or we need more cards, fetch from Firestore
+      final query = _firestore
+          .collection(_collectionName)
+          .orderBy('name')
+          .limit(pageSize);
 
-      final query = page == 0
-          ? _firestore
-              .collection(_collectionName)
-              .orderBy('name')
-              .limit(_batchSize)
-          : await _getLastDocumentName(page - 1).then((lastDocName) =>
-              lastDocName != null
-                  ? _firestore
-                      .collection(_collectionName)
-                      .orderBy('name')
-                      .startAfter([lastDocName]).limit(_batchSize)
-                  : _firestore
-                      .collection(_collectionName)
-                      .orderBy('name')
-                      .limit(_batchSize));
+      if (page > 0) {
+        // Get the last document from the previous page
+        final lastDoc = await _firestore
+            .collection(_collectionName)
+            .orderBy('name')
+            .limit(start)
+            .get()
+            .then((snap) => snap.docs.last);
+
+        query.startAfterDocument(lastDoc);
+      }
 
       final snapshot = await query.get();
       final cards =
           snapshot.docs.map((doc) => FFTCGCard.fromFirestore(doc)).toList();
 
-      await _saveCardsLocally(cards);
-      await _updateLastFetchedPage(page);
-      await _updateCacheTimestamp();
+      // Cache the cards
+      await _hiveService.saveCards(cards);
 
-      _logger.info('Fetched ${cards.length} cards for page $page');
       return cards;
     } catch (e, stackTrace) {
       _logger.severe('Error getting cards page $page', e, stackTrace);
-      return _getLocalCardsPage(page);
-    }
-  }
-
-  List<FFTCGCard> _getLocalCardsPage(int page) {
-    try {
-      final allCards = _hiveService.getAllCards();
-      final start = page * _batchSize;
-      final end = start + _batchSize;
-
-      if (start >= allCards.length) return [];
-
-      return allCards.sublist(
-          start, end > allCards.length ? allCards.length : end);
-    } catch (e, stackTrace) {
-      _logger.severe('Error getting local cards page', e, stackTrace);
       return [];
     }
-  }
+  }    
 
   List<FFTCGCard> _getFilteredLocalCards({
     String? searchQuery,
@@ -238,44 +242,7 @@ class CardRepository {
       _logger.severe('Error saving cards locally', e, stackTrace);
       rethrow;
     }
-  }
-
-  Future<void> _updateCacheTimestamp() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(
-        _lastCacheTimeKey,
-        DateTime.now().millisecondsSinceEpoch,
-      );
-    } catch (e, stackTrace) {
-      _logger.severe('Error updating cache timestamp', e, stackTrace);
-    }
-  }
-
-  Future<void> _updateLastFetchedPage(int page) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_lastPageKey, page);
-    } catch (e, stackTrace) {
-      _logger.severe('Error updating last fetched page', e, stackTrace);
-    }
-  }
-
-  Future<bool> _isCacheValid() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final lastCacheTime = prefs.getInt(_lastCacheTimeKey);
-
-      if (lastCacheTime == null) return false;
-
-      final lastCacheDateTime =
-          DateTime.fromMillisecondsSinceEpoch(lastCacheTime);
-      return DateTime.now().difference(lastCacheDateTime) < _cacheExpiration;
-    } catch (e, stackTrace) {
-      _logger.severe('Error checking cache validity', e, stackTrace);
-      return false;
-    }
-  }
+  }  
 
   // Keep existing methods...
   Future<FFTCGCard?> getCardByNumber(String cardNumber) async {
@@ -726,18 +693,7 @@ class CardRepository {
       _logger.severe('Failed to initialize card repository', e, stackTrace);
       rethrow;
     }
-  }
-
-  Future<String?> _getLastDocumentName(int previousPage) async {
-    try {
-      final lastPageCards = _getLocalCardsPage(previousPage);
-      if (lastPageCards.isEmpty) return null;
-      return lastPageCards.last.name;
-    } catch (e, stackTrace) {
-      _logger.severe('Error getting last document name', e, stackTrace);
-      return null;
-    }
-  }
+  }  
 }
 
 class CardRepositoryException implements Exception {

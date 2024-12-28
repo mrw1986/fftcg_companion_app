@@ -7,7 +7,8 @@ class ProfileHeader extends StatelessWidget {
   final String? email;
   final String? avatarUrl;
   final Color avatarColor;
-  final double size; // Add this parameter
+  final double size;
+  final VoidCallback onLogout; // Add this
 
   const ProfileHeader({
     super.key,
@@ -15,7 +16,8 @@ class ProfileHeader extends StatelessWidget {
     this.email,
     this.avatarUrl,
     required this.avatarColor,
-    this.size = 80.0, // Default size
+    required this.size,
+    required this.onLogout, // Add this
   });
 
   @override

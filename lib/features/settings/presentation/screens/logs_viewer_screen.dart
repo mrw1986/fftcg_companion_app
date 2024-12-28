@@ -1,3 +1,5 @@
+// lib/features/settings/presentation/screens/logs_viewer_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,28 +50,20 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
 
   Future<void> _shareLogs() async {
     try {
-      final logs = await _logger.getLogs(errorLogsOnly: _showErrorLogsOnly);
-
-      // Verify widget is still mounted before proceeding
-      if (!mounted) return;
-
       final tempDir = await getTemporaryDirectory();
-      if (!mounted) return;
-
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileName = 'FFTCG_Companion_Logs_$timestamp.txt';
+      final fileName =
+          'FFTCG_Companion_Logs_${DateTime.now().millisecondsSinceEpoch}.txt';
       final file = File('${tempDir.path}/$fileName');
-      await file.writeAsString(logs);
+      await file.writeAsString(_logs);
 
       if (!mounted) return;
 
       final box = context.findRenderObject() as RenderBox?;
       if (!mounted) return;
 
-      // Don't use subject field as it affects Google Drive filename
       final result = await Share.shareXFiles(
-        [XFile(file.path, name: fileName)], // Explicitly set the name
-        text: fileName, // Use text instead of subject
+        [XFile(file.path, name: fileName)],
+        text: fileName,
         sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size,
       );
 
@@ -81,7 +75,6 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
         _logger.info('Share dialog dismissed');
       }
 
-      // Clean up after delay
       Future.delayed(const Duration(seconds: 5), () async {
         try {
           if (await file.exists()) {
@@ -143,7 +136,6 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        automaticallyImplyLeading: false, // Add this
         actions: [
           IconButton(
             icon: const Icon(Icons.copy),
@@ -152,24 +144,18 @@ class _LogsViewerScreenState extends ConsumerState<LogsViewerScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: _shareLogs,
+            onPressed: _logs.isNotEmpty ? _shareLogs : null,
             tooltip: 'Share logs',
           ),
           IconButton(
             icon: const Icon(Icons.delete),
-            onPressed: _clearLogs,
+            onPressed: _logs.isNotEmpty ? _clearLogs : null,
             tooltip: 'Clear logs',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadLogs,
             tooltip: 'Refresh logs',
-          ),
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.of(context)
-                .popUntil((route) => route.isFirst), // Pop to root
-            tooltip: 'Close',
           ),
         ],
       ),

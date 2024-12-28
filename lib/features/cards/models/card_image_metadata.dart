@@ -38,13 +38,13 @@ class CardImageMetadata {
 
   factory CardImageMetadata.fromMap(Map<String, dynamic> map) {
     return CardImageMetadata(
-      contentType: map['contentType'] as String,
-      hash: map['hash'] as String,
-      highResSize: map['highResSize'] as int,
-      lowResSize: map['lowResSize'] as int,
-      originalSize: map['originalSize'] as int,
-      size: map['size'] as int,
-      updated: (map['updated'] as Timestamp).toDate(),
+      contentType: map['contentType'] as String? ?? '',
+      hash: map['hash'] as String? ?? '',
+      highResSize: map['highResSize'] as int? ?? 0,
+      lowResSize: map['lowResSize'] as int? ?? 0,
+      originalSize: map['originalSize'] as int? ?? 0,
+      size: map['size'] as int? ?? 0,
+      updated: (map['updated'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
 
