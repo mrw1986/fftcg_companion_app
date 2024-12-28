@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../core/logging/logger_service.dart';
+import '../../../core/logging/talker_service.dart';
 import '../repositories/card_repository.dart';
 import '../services/card_cache_service.dart';
 import 'card_notifier.dart';
@@ -29,16 +29,16 @@ final cardNotifierProvider =
     StateNotifierProvider<CardNotifier, CardState>((ref) {
   final repository = ref.watch(cardRepositoryProvider);
   final cacheService = ref.watch(cardCacheServiceProvider);
-  final logger = LoggerService();
+  final talker = TalkerService();
 
   ref.onDispose(() {
-    logger.info('Disposing CardNotifier provider');
+    talker.info('Disposing CardNotifier provider');
   });
 
   return CardNotifier(
     repository: repository,
     cacheService: cacheService,
-    logger: logger,
+    talker: talker,
   );
 });
 

@@ -25,7 +25,7 @@ final authNotifierProvider =
   final authRepository = ref.watch(authRepositoryProvider);
   return AuthNotifier(
     authRepository: authRepository,
-    logger: null, // Optional logger will use default
+    talker: null, // Optional logger will use default
   );
 });
 

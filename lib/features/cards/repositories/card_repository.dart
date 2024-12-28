@@ -1,7 +1,7 @@
 // lib/features/cards/repositories/card_repository.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../../core/logging/logger_service.dart';
+import '../../../core/logging/talker_service.dart';
 import '../../../core/services/hive_service.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../models/fftcg_card.dart';
@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class CardRepository {
   final FirebaseFirestore _firestore;
   final HiveService _hiveService;
-  final LoggerService _logger;
+  final TalkerService _talker;
   final AuthService _authService;
   final ConnectivityService _connectivityService;
 
@@ -24,14 +24,14 @@ class CardRepository {
   CardRepository({
     FirebaseFirestore? firestore,
     HiveService? hiveService,
-    LoggerService? logger,
+    TalkerService? talker,
     AuthService? authService,
     ConnectivityService? connectivityService,
   })  : _firestore = firestore ?? FirebaseFirestore.instance,
         _hiveService = hiveService ?? HiveService(),
-        _logger = logger ?? LoggerService(),
+        _talker = talker ?? TalkerService(),
         _authService = authService ?? AuthService(),
-        _connectivityService = connectivityService ?? ConnectivityService();  
+        _connectivityService = connectivityService ?? ConnectivityService();
 
   Future<void> _updateCacheTimestamp() async {
     try {
@@ -46,9 +46,9 @@ class CardRepository {
         );
       }
 
-      _logger.info('Cache timestamp updated successfully');
+      _talker.info('Cache timestamp updated successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Error updating cache timestamp', e, stackTrace);
+      _talker.severe('Error updating cache timestamp', e, stackTrace);
       throw CardRepositoryException(
         'Failed to update cache timestamp',
         code: 'cache-update-failed',
@@ -77,7 +77,7 @@ class CardRepository {
       final isGuest = await _authService.isGuestSession();
       final isConnected = await _connectivityService.hasStableConnection();
       if (isGuest || !isConnected) {
-        _logger.info(
+        _talker.info(
             'Using local data only - Guest: $isGuest, Connected: $isConnected');
         return;
       }
@@ -130,12 +130,12 @@ class CardRepository {
 
           yield resultsList;
         } catch (e, stackTrace) {
-          _logger.severe('Error processing card snapshot', e, stackTrace);
+          _talker.severe('Error processing card snapshot', e, stackTrace);
           yield cachedCards;
         }
       }
     } catch (e, stackTrace) {
-      _logger.severe('Error watching cards', e, stackTrace);
+      _talker.severe('Error watching cards', e, stackTrace);
       yield _getFilteredLocalCards(
         searchQuery: searchQuery,
         elements: elements,
@@ -187,7 +187,7 @@ class CardRepository {
 
       return cards;
     } catch (e, stackTrace) {
-      _logger.severe('Error getting cards page $page', e, stackTrace);
+      _talker.severe('Error getting cards page $page', e, stackTrace);
       return [];
     }
   }    
@@ -229,7 +229,7 @@ class CardRepository {
 
       return cards;
     } catch (e, stackTrace) {
-      _logger.severe('Error getting filtered local cards', e, stackTrace);
+      _talker.severe('Error getting filtered local cards', e, stackTrace);
       return [];
     }
   }
@@ -237,9 +237,9 @@ class CardRepository {
   Future<void> _saveCardsLocally(List<FFTCGCard> cards) async {
     try {
       await _hiveService.saveCards(cards);
-      _logger.info('Saved ${cards.length} cards locally');
+      _talker.info('Saved ${cards.length} cards locally');
     } catch (e, stackTrace) {
-      _logger.severe('Error saving cards locally', e, stackTrace);
+      _talker.severe('Error saving cards locally', e, stackTrace);
       rethrow;
     }
   }  
@@ -255,7 +255,7 @@ class CardRepository {
       final isGuest = await _authService.isGuestSession();
       final isConnected = await _connectivityService.hasStableConnection();
       if (isGuest || !isConnected) {
-        _logger.info('Using local data only for card lookup');
+        _talker.info('Using local data only for card lookup');
         return null;
       }
 
@@ -269,7 +269,7 @@ class CardRepository {
           .get();
 
       if (querySnapshot.docs.isEmpty) {
-        _logger.warning('Card not found: $cardNumber');
+        _talker.warning('Card not found: $cardNumber');
         return null;
       }
 
@@ -277,7 +277,7 @@ class CardRepository {
       await _hiveService.saveCard(card);
       return card;
     } catch (e, stackTrace) {
-      _logger.severe('Error getting card by number', e, stackTrace);
+      _talker.severe('Error getting card by number', e, stackTrace);
       rethrow;
     }
   }
@@ -294,7 +294,7 @@ class CardRepository {
       final isGuest = await _authService.isGuestSession();
       final isConnected = await _connectivityService.hasStableConnection();
       if (isGuest || !isConnected) {
-        _logger.info('Using local data only for search');
+        _talker.info('Using local data only for search');
         return localCards;
       }
 
@@ -315,7 +315,7 @@ class CardRepository {
 
       return cards;
     } catch (e, stackTrace) {
-      _logger.severe('Error searching cards', e, stackTrace);
+      _talker.severe('Error searching cards', e, stackTrace);
       // Return local results on error
       return _getLocalCards(searchQuery: query);
     }
@@ -337,7 +337,7 @@ class CardRepository {
       final isGuest = await _authService.isGuestSession();
       final isConnected = await _connectivityService.hasStableConnection();
       if (isGuest || !isConnected) {
-        _logger.info('Using local data only for element lookup');
+        _talker.info('Using local data only for element lookup');
         return [];
       }
 
@@ -352,10 +352,10 @@ class CardRepository {
           .toList()
         ..sort();
 
-      _logger.info('Found ${elements.length} unique elements');
+      _talker.info('Found ${elements.length} unique elements');
       return elements;
     } catch (e, stackTrace) {
-      _logger.severe('Error getting unique elements', e, stackTrace);
+      _talker.severe('Error getting unique elements', e, stackTrace);
       rethrow;
     }
   }
@@ -378,7 +378,7 @@ class CardRepository {
       final isGuest = await _authService.isGuestSession();
       final isConnected = await _connectivityService.hasStableConnection();
       if (isGuest || !isConnected) {
-        _logger.info('Using local data only for card type lookup');
+        _talker.info('Using local data only for card type lookup');
         return [];
       }
 
@@ -395,10 +395,10 @@ class CardRepository {
           .toList()
         ..sort();
 
-      _logger.info('Found ${cardTypes.length} unique card types');
+      _talker.info('Found ${cardTypes.length} unique card types');
       return cardTypes;
     } catch (e, stackTrace) {
-      _logger.severe('Error getting unique card types', e, stackTrace);
+      _talker.severe('Error getting unique card types', e, stackTrace);
       rethrow;
     }
   }
@@ -415,7 +415,7 @@ class CardRepository {
       final isGuest = await _authService.isGuestSession();
       final isConnected = await _connectivityService.hasStableConnection();
       if (isGuest || !isConnected) {
-        _logger.info('Using local data only for full card list');
+        _talker.info('Using local data only for full card list');
         return localCards;
       }
 
@@ -451,13 +451,13 @@ class CardRepository {
         // Save batch to local storage
         await _saveCardsLocally(batchCards);
         
-        _logger.info('Fetched batch of ${batchCards.length} cards');
+        _talker.info('Fetched batch of ${batchCards.length} cards');
       }
 
-      _logger.info('Retrieved total of ${allCards.length} cards');
+      _talker.info('Retrieved total of ${allCards.length} cards');
       return allCards;
     } catch (e, stackTrace) {
-      _logger.severe('Error getting all cards', e, stackTrace);
+      _talker.severe('Error getting all cards', e, stackTrace);
       rethrow;
     }
   }
@@ -498,7 +498,7 @@ class CardRepository {
 
       return cards;
     } catch (e, stackTrace) {
-      _logger.severe('Error getting local cards', e, stackTrace);
+      _talker.severe('Error getting local cards', e, stackTrace);
       return [];
     }
   }  
@@ -506,9 +506,9 @@ class CardRepository {
   Future<void> saveCardLocally(FFTCGCard card) async {
     try {
       await _hiveService.saveCard(card);
-      _logger.info('Card saved locally: ${card.cardNumber}');
+      _talker.info('Card saved locally: ${card.cardNumber}');
     } catch (e, stackTrace) {
-      _logger.severe('Error saving card locally', e, stackTrace);
+      _talker.severe('Error saving card locally', e, stackTrace);
       rethrow;
     }
   }
@@ -516,9 +516,9 @@ class CardRepository {
   Future<void> deleteCardLocally(String cardNumber) async {
     try {
       await _hiveService.deleteCard(cardNumber);
-      _logger.info('Card deleted locally: $cardNumber');
+      _talker.info('Card deleted locally: $cardNumber');
     } catch (e, stackTrace) {
-      _logger.severe('Error deleting card locally', e, stackTrace);
+      _talker.severe('Error deleting card locally', e, stackTrace);
       rethrow;
     }
   }
@@ -529,22 +529,22 @@ class CardRepository {
       if (card != null) {
         card.markForSync();
         await _hiveService.saveCard(card);
-        _logger.info('Card marked for sync: $cardNumber');
+        _talker.info('Card marked for sync: $cardNumber');
       }
     } catch (e, stackTrace) {
-      _logger.severe('Error marking card for sync', e, stackTrace);
+      _talker.severe('Error marking card for sync', e, stackTrace);
       rethrow;
     }
   }
 
   Future<void> syncUserData(String userId) async {
     try {
-      _logger.info('Starting user data sync for ID: $userId');
+      _talker.info('Starting user data sync for ID: $userId');
 
       // Check if we're in guest mode
       final isGuest = await _authService.isGuestSession();
       if (isGuest) {
-        _logger.info('Skipping sync for guest user');
+        _talker.info('Skipping sync for guest user');
         return;
       }
 
@@ -561,7 +561,7 @@ class CardRepository {
           .toList();
 
       if (localCards.isEmpty) {
-        _logger.info('No local changes to sync');
+        _talker.info('No local changes to sync');
         return;
       }
 
@@ -599,13 +599,13 @@ class CardRepository {
           await _hiveService.saveCard(card);
         }
 
-        _logger.info(
+        _talker.info(
             'Synced batch of ${currentBatch.length} cards ($end/${localCards.length})');
       }
 
-      _logger.info('Successfully synced ${localCards.length} cards');
+      _talker.info('Successfully synced ${localCards.length} cards');
     } catch (e, stackTrace) {
-      _logger.severe('Error syncing user data', e, stackTrace);
+      _talker.severe('Error syncing user data', e, stackTrace);
       rethrow;
     }
   }
@@ -613,9 +613,9 @@ class CardRepository {
   Future<void> clearLocalData() async {
     try {
       await _hiveService.clearAll();
-      _logger.info('Local data cleared successfully');
+      _talker.info('Local data cleared successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Error clearing local data', e, stackTrace);
+      _talker.severe('Error clearing local data', e, stackTrace);
       rethrow;
     }
   }
@@ -633,7 +633,7 @@ class CardRepository {
         if (attempts >= maxAttempts) rethrow;
 
         // Fixed string interpolation
-        _logger.warning(
+        _talker.warning(
             'Operation failed, attempt $attempts of $maxAttempts. Retrying in $retryDelay.inSeconds s');
         await Future.delayed(retryDelay);
       }
@@ -656,7 +656,7 @@ class CardRepository {
           DateTime.fromMillisecondsSinceEpoch(lastCacheTime);
       return DateTime.now().difference(lastCacheDateTime) < _cacheExpiration;
     } catch (e, stackTrace) {
-      _logger.severe('Error checking cache validity', e, stackTrace);
+      _talker.severe('Error checking cache validity', e, stackTrace);
       return false;
     }
   }
@@ -674,9 +674,9 @@ class CardRepository {
         );
       }
 
-      _logger.info('Cache timestamp updated successfully');
+      _talker.info('Cache timestamp updated successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Error updating cache timestamp', e, stackTrace);
+      _talker.severe('Error updating cache timestamp', e, stackTrace);
       throw CardRepositoryException(
         'Failed to update cache timestamp',
         code: 'cache-update-failed',
@@ -688,9 +688,9 @@ class CardRepository {
   Future<void> initialize() async {
     try {
       await _hiveService.initialize();
-      _logger.info('Card repository initialized successfully');
+      _talker.info('Card repository initialized successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Failed to initialize card repository', e, stackTrace);
+      _talker.severe('Failed to initialize card repository', e, stackTrace);
       rethrow;
     }
   }  

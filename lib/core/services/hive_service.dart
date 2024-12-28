@@ -1,5 +1,5 @@
 import 'package:hive_flutter/hive_flutter.dart';
-import '../logging/logger_service.dart';
+import '../logging/talker_service.dart';
 import '../../features/cards/models/fftcg_card.dart';
 import '../../features/cards/models/card_extended_data.dart';
 import '../../features/cards/models/card_image_metadata.dart';
@@ -9,21 +9,21 @@ class HiveService {
   static const String cardsBoxName = 'cards';
   static const String userBoxName = 'user';
   static const String syncStatusBoxName = 'sync_status';
-  
-  final LoggerService _logger;
+
+  final TalkerService _talker;
   bool _isInitialized = false;
 
-  HiveService({LoggerService? logger}) : _logger = logger ?? LoggerService();
+  HiveService({TalkerService? talker}) : _talker = talker ?? TalkerService();
 
   Future<void> initialize() async {
     if (_isInitialized) {
-      _logger.info('Hive already initialized');
+      _talker.info('Hive already initialized');
       return;
     }
 
     try {
       await Hive.initFlutter();
-      
+
       // Register adapters if not already registered
       if (!Hive.isAdapterRegistered(0)) {
         Hive.registerAdapter(SyncStatusAdapter());
@@ -46,9 +46,9 @@ class HiveService {
       ]);
 
       _isInitialized = true;
-      _logger.info('Hive initialized successfully');
+      _talker.info('Hive initialized successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Failed to initialize Hive', e, stackTrace);
+      _talker.severe('Failed to initialize Hive', e, stackTrace);
       rethrow;
     }
   }
@@ -61,9 +61,9 @@ class HiveService {
         Hive.box(syncStatusBoxName).close(),
       ]);
       _isInitialized = false;
-      _logger.info('Hive boxes closed successfully');
+      _talker.info('Hive boxes closed successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Error closing Hive boxes', e, stackTrace);
+      _talker.severe('Error closing Hive boxes', e, stackTrace);
       rethrow;
     }
   }
@@ -96,9 +96,9 @@ class HiveService {
         getUserBox().clear(),
         getSyncStatusBox().clear(),
       ]);
-      _logger.info('All Hive boxes cleared successfully');
+      _talker.info('All Hive boxes cleared successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Error clearing Hive boxes', e, stackTrace);
+      _talker.severe('Error clearing Hive boxes', e, stackTrace);
       rethrow;
     }
   }
@@ -111,9 +111,9 @@ class HiveService {
         Hive.deleteBoxFromDisk(userBoxName),
         Hive.deleteBoxFromDisk(syncStatusBoxName),
       ]);
-      _logger.info('All Hive boxes deleted successfully');
+      _talker.info('All Hive boxes deleted successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Error deleting Hive boxes', e, stackTrace);
+      _talker.severe('Error deleting Hive boxes', e, stackTrace);
       rethrow;
     }
   }
@@ -123,9 +123,9 @@ class HiveService {
     try {
       final box = getCardsBox();
       await box.put(card.cardNumber, card);
-      _logger.info('Card saved successfully: ${card.cardNumber}');
+      _talker.info('Card saved successfully: ${card.cardNumber}');
     } catch (e, stackTrace) {
-      _logger.severe('Error saving card', e, stackTrace);
+      _talker.severe('Error saving card', e, stackTrace);
       rethrow;
     }
   }
@@ -135,9 +135,9 @@ class HiveService {
       final box = getCardsBox();
       final cardsMap = {for (var card in cards) card.cardNumber: card};
       await box.putAll(cardsMap);
-      _logger.info('${cards.length} cards saved successfully');
+      _talker.info('${cards.length} cards saved successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Error saving cards', e, stackTrace);
+      _talker.severe('Error saving cards', e, stackTrace);
       rethrow;
     }
   }
@@ -147,7 +147,7 @@ class HiveService {
       final box = getCardsBox();
       return box.get(cardNumber);
     } catch (e, stackTrace) {
-      _logger.severe('Error getting card', e, stackTrace);
+      _talker.severe('Error getting card', e, stackTrace);
       rethrow;
     }
   }
@@ -157,7 +157,7 @@ class HiveService {
       final box = getCardsBox();
       return box.values.toList();
     } catch (e, stackTrace) {
-      _logger.severe('Error getting all cards', e, stackTrace);
+      _talker.severe('Error getting all cards', e, stackTrace);
       rethrow;
     }
   }
@@ -166,9 +166,9 @@ class HiveService {
     try {
       final box = getCardsBox();
       await box.delete(cardNumber);
-      _logger.info('Card deleted successfully: $cardNumber');
+      _talker.info('Card deleted successfully: $cardNumber');
     } catch (e, stackTrace) {
-      _logger.severe('Error deleting card', e, stackTrace);
+      _talker.severe('Error deleting card', e, stackTrace);
       rethrow;
     }
   }

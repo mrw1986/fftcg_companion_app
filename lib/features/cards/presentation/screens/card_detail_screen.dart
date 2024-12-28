@@ -3,10 +3,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/logging/talker_service.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../models/fftcg_card.dart';
 import '../../providers/card_providers.dart';
-import '../../../../core/logging/logger_service.dart';
 
 class CardDetailScreen extends ConsumerStatefulWidget {
   final FFTCGCard card;
@@ -21,13 +21,13 @@ class CardDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
-  final _logger = LoggerService();
+  final _talker = TalkerService();
   bool _isImageExpanded = false;
 
   @override
   void initState() {
     super.initState();
-    _logger.info('Viewing card details: ${widget.card.cardNumber}');
+    _talker.info('Viewing card details: ${widget.card.cardNumber}');
     ref.read(cardCacheServiceProvider).addRecentCard(widget.card);
   }
 

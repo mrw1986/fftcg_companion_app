@@ -8,7 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import '../../../core/logging/logger_service.dart';
+import '../../../core/logging/talker_service.dart';
 import '../../cards/providers/card_providers.dart';
 
 // Constants for SharedPreferences keys
@@ -76,9 +76,9 @@ final logsProvider = StateNotifierProvider<LogsNotifier, List<LogEntry>>((ref) {
 
 // Logs stream provider
 final logsStreamProvider = StreamProvider<String>((ref) async* {
+  final talker = TalkerService();
   while (true) {
-    final logs = await LoggerService().getLogs();
-    yield logs;
+    yield talker.history.map((log) => log.generateTextMessage()).join('\n');
     await Future.delayed(const Duration(seconds: 1));
   }
 });
@@ -86,7 +86,7 @@ final logsStreamProvider = StreamProvider<String>((ref) async* {
 // Logs notifier
 class LogsNotifier extends StateNotifier<List<LogEntry>> {
   final Ref _ref;
-  final LoggerService _logger = LoggerService();
+  final TalkerService _talker = TalkerService();
   static const int _maxLogEntries = 1000;
 
   LogsNotifier(this._ref) : super([]) {
@@ -132,7 +132,7 @@ class LogsNotifier extends StateNotifier<List<LogEntry>> {
 
       await _saveLogs();
     } catch (e) {
-      _logger.severe('Error adding log', e); // Changed from print
+      _talker.severe('Error adding log', e); // Changed from print
     }
   }
 
@@ -144,7 +144,7 @@ class LogsNotifier extends StateNotifier<List<LogEntry>> {
         state.map((log) => jsonEncode(log.toJson())).toList(),
       );
     } catch (e) {
-      _logger.severe('Error saving logs', e); // Changed from print
+      _talker.severe('Error saving logs', e); // Changed from print
     }
   }
 

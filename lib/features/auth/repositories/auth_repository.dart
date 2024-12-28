@@ -2,21 +2,21 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../models/user_model.dart';
 import '../services/auth_service.dart';
-import '../../../core/logging/logger_service.dart';
+import '../../../core/logging/talker_service.dart';
 
 class AuthRepository {
   final AuthService _authService;
-  final LoggerService _logger;
+  final TalkerService _talker;
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
 
   AuthRepository({
     AuthService? authService,
-    LoggerService? logger,
+    TalkerService? talker,
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
   })  : _authService = authService ?? AuthService(),
-        _logger = logger ?? LoggerService(),
+        _talker = talker ?? TalkerService(),
         _firestore = firestore ?? FirebaseFirestore.instance,
         _auth = auth ?? FirebaseAuth.instance;
 
@@ -29,7 +29,7 @@ class AuthRepository {
           await _firestore.collection('users').doc(currentUser.uid).get();
       return doc.exists && (doc.data()?['isGuest'] ?? false);
     } catch (e, stackTrace) {
-      _logger.severe('Error checking guest session', e, stackTrace);
+      _talker.severe('Error checking guest session', e, stackTrace);
       return false;
     }
   }
@@ -45,7 +45,7 @@ class AuthRepository {
             }
             return null;
           } catch (e, stackTrace) {
-            _logger.severe('Error in auth state changes stream', e, stackTrace);
+            _talker.severe('Error in auth state changes stream', e, stackTrace);
             return null;
           }
         },
@@ -62,7 +62,7 @@ class AuthRepository {
       }
       return null;
     } catch (e, stackTrace) {
-      _logger.severe('Error getting current user', e, stackTrace);
+      _talker.severe('Error getting current user', e, stackTrace);
       return null;
     }
   }
@@ -71,7 +71,7 @@ class AuthRepository {
     try {
       return await _authService.signInWithGoogle();
     } catch (e, stackTrace) {
-      _logger.severe(
+      _talker.severe(
           'Error signing in with Google in repository', e, stackTrace);
       rethrow;
     }
@@ -82,7 +82,7 @@ class AuthRepository {
     try {
       return await _authService.signInWithEmailPassword(email, password);
     } catch (e, stackTrace) {
-      _logger.severe(
+      _talker.severe(
           'Error signing in with email/password in repository', e, stackTrace);
       rethrow;
     }
@@ -100,7 +100,7 @@ class AuthRepository {
         displayName,
       );
     } catch (e, stackTrace) {
-      _logger.severe(
+      _talker.severe(
           'Error registering with email/password in repository', e, stackTrace);
       rethrow;
     }
@@ -135,10 +135,10 @@ class AuthRepository {
         SetOptions(merge: true),
       );
 
-      _logger.info('Guest session created successfully: ${user.uid}');
+      _talker.info('Guest session created successfully: ${user.uid}');
       return guestUser;
     } catch (e, stackTrace) {
-      _logger.severe('Error signing in as guest in repository', e, stackTrace);
+      _talker.severe('Error signing in as guest in repository', e, stackTrace);
       rethrow;
     }
   }
@@ -147,7 +147,7 @@ class AuthRepository {
     try {
       return await _authService.linkWithGoogle();
     } catch (e, stackTrace) {
-      _logger.severe('Error linking with Google', e, stackTrace);
+      _talker.severe('Error linking with Google', e, stackTrace);
       rethrow;
     }
   }
@@ -165,12 +165,12 @@ class AuthRepository {
         // Clean up guest user data before signing out
         await _firestore.collection('users').doc(currentUser.uid).delete();
         await currentUser.delete();
-        _logger.info('Guest user data cleaned up: ${currentUser.uid}');
+        _talker.info('Guest user data cleaned up: ${currentUser.uid}');
       }
 
       await _authService.signOut();
     } catch (e, stackTrace) {
-      _logger.severe('Error signing out in repository', e, stackTrace);
+      _talker.severe('Error signing out in repository', e, stackTrace);
       rethrow;
     }
   }
@@ -179,7 +179,7 @@ class AuthRepository {
     try {
       await _authService.sendEmailVerification();
     } catch (e, stackTrace) {
-      _logger.severe(
+      _talker.severe(
           'Error sending email verification in repository', e, stackTrace);
       rethrow;
     }
@@ -189,7 +189,7 @@ class AuthRepository {
     try {
       await _authService.checkEmailVerification();
     } catch (e, stackTrace) {
-      _logger.severe(
+      _talker.severe(
           'Error checking email verification in repository', e, stackTrace);
       rethrow;
     }
@@ -198,9 +198,9 @@ class AuthRepository {
   Future<void> updateUserData(UserModel user) async {
     try {
       await _firestore.collection('users').doc(user.id).update(user.toMap());
-      _logger.info('User data updated: ${user.id}');
+      _talker.info('User data updated: ${user.id}');
     } catch (e, stackTrace) {
-      _logger.severe('Error updating user data', e, stackTrace);
+      _talker.severe('Error updating user data', e, stackTrace);
       rethrow;
     }
   }
@@ -208,9 +208,9 @@ class AuthRepository {
   Future<void> deleteUserData(String userId) async {
     try {
       await _firestore.collection('users').doc(userId).delete();
-      _logger.info('User data deleted: $userId');
+      _talker.info('User data deleted: $userId');
     } catch (e, stackTrace) {
-      _logger.severe('Error deleting user data', e, stackTrace);
+      _talker.severe('Error deleting user data', e, stackTrace);
       rethrow;
     }
   }
@@ -222,9 +222,9 @@ class AuthRepository {
         'isGuest': false,
         'convertedAt': FieldValue.serverTimestamp(),
       });
-      _logger.info('Guest user converted to permanent: ${user.id}');
+      _talker.info('Guest user converted to permanent: ${user.id}');
     } catch (e, stackTrace) {
-      _logger.severe('Error converting guest user', e, stackTrace);
+      _talker.severe('Error converting guest user', e, stackTrace);
       rethrow;
     }
   }

@@ -4,11 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import '../../../core/logging/logger_service.dart';
 import '../../../models/user_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import '../../../services/app_check_service.dart';
+import '../../../core/logging/talker_service.dart';
 
 class AuthService {
   final _auth = FirebaseAuth.instance;
@@ -17,7 +17,7 @@ class AuthService {
   final _appCheckService = AppCheckService();
   static const String _guestPrefsKey = 'guest_session';
   static const Duration _timeout = Duration(seconds: 30);
-  final _logger = LoggerService();
+  final _talker = TalkerService();
 
   // Rate limiting properties
   final _maxAttempts = 5;
@@ -60,7 +60,7 @@ class AuthService {
         }
       } on FirebaseException catch (e) {
         if (e.code == 'too-many-attempts') {
-          _logger
+          _talker
               .warning('App Check rate limit hit, proceeding with retry logic');
           return;
         }
@@ -100,7 +100,7 @@ class AuthService {
         if (e.code == 'too-many-attempts') {
           retryCount++;
           if (retryCount < maxRetries) {
-            _logger.warning(
+            _talker.warning(
                 'App Check rate limit hit, retrying... ($retryCount/$maxRetries)');
             await Future.delayed(Duration(seconds: retryCount * 2));
             continue;
@@ -139,14 +139,14 @@ class AuthService {
       await _clearGuestSession();
       return await _createOrUpdateUser(userCredential.user!);
     } catch (e) {
-      _logger.severe('Error signing in with Google', e);
+      _talker.severe('Error signing in with Google', e);
       rethrow;
     }
   }
 
   Future<UserModel?> signInAsGuest() async {
     try {
-      _logger.info('Creating guest session');
+      _talker.info('Creating guest session');
 
       final userCredential = await _auth.signInAnonymously();
       final user = userCredential.user;
@@ -172,10 +172,10 @@ class AuthService {
         'lastLoginAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      _logger.info('Guest session created successfully with ID: ${user.uid}');
+      _talker.info('Guest session created successfully with ID: ${user.uid}');
       return guestUser;
     } catch (e) {
-      _logger.severe('Error creating guest session', e);
+      _talker.severe('Error creating guest session', e);
       throw FirebaseAuthException(
         code: 'guest-session-failed',
         message: 'Failed to create guest session: ${e.toString()}',
@@ -193,7 +193,7 @@ class AuthService {
 
       return doc.exists && (doc.data()?['isGuest'] ?? false);
     } catch (e) {
-      _logger.severe('Error checking guest session', e);
+      _talker.severe('Error checking guest session', e);
       return false;
     }
   }
@@ -203,7 +203,7 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_guestPrefsKey);
     } catch (e) {
-      _logger.severe('Error clearing guest session', e);
+      _talker.severe('Error clearing guest session', e);
     }
   }
 
@@ -235,12 +235,12 @@ class AuthService {
       return await _createOrUpdateUser(user);
     } on FirebaseAuthException catch (e) {
       if (e.code == 'email-already-in-use') {
-        _logger.warning('Email already in use: $email');
+        _talker.warning('Email already in use: $email');
         return null;
       }
       rethrow;
     } catch (e) {
-      _logger.severe('Error registering with email/password', e);
+      _talker.severe('Error registering with email/password', e);
       rethrow;
     }
   }
@@ -259,9 +259,9 @@ class AuthService {
         _auth.signOut(),
         _googleSignIn.signOut(),
       ]);
-      _logger.info('User signed out successfully');
+      _talker.info('User signed out successfully');
     } catch (e) {
-      _logger.severe('Error signing out', e);
+      _talker.severe('Error signing out', e);
       rethrow;
     }
   }
@@ -280,7 +280,7 @@ class AuthService {
 
       return null;
     } catch (e) {
-      _logger.severe('Error getting current user', e);
+      _talker.severe('Error getting current user', e);
       return null;
     }
   }
@@ -303,7 +303,7 @@ class AuthService {
       final doc = await userDoc.get();
       if (!doc.exists) {
         await userDoc.set(userData.toMap());
-        _logger.info('Created new user document for ${user.uid}');
+        _talker.info('Created new user document for ${user.uid}');
       } else {
         await userDoc.update({
           'lastLoginAt': Timestamp.fromDate(DateTime.now()),
@@ -312,12 +312,12 @@ class AuthService {
           'photoURL': user.photoURL,
           'isEmailVerified': user.emailVerified,
         });
-        _logger.info('Updated user document for ${user.uid}');
+        _talker.info('Updated user document for ${user.uid}');
       }
 
       return userData;
     } catch (e) {
-      _logger.severe('Error creating/updating user', e);
+      _talker.severe('Error creating/updating user', e);
       throw FirebaseAuthException(
         code: 'user-update-failed',
         message: 'Failed to update user data: ${e.toString()}',
@@ -330,10 +330,10 @@ class AuthService {
       final user = _auth.currentUser;
       if (user != null && !user.emailVerified) {
         await user.sendEmailVerification().timeout(_timeout);
-        _logger.info('Verification email sent to ${user.email}');
+        _talker.info('Verification email sent to ${user.email}');
       }
     } catch (e) {
-      _logger.severe('Error sending email verification', e);
+      _talker.severe('Error sending email verification', e);
       rethrow;
     }
   }
@@ -343,10 +343,10 @@ class AuthService {
       final user = _auth.currentUser;
       if (user != null) {
         await user.reload().timeout(_timeout);
-        _logger.info('Email verification status: ${user.emailVerified}');
+        _talker.info('Email verification status: ${user.emailVerified}');
       }
     } catch (e) {
-      _logger.severe('Error checking email verification', e);
+      _talker.severe('Error checking email verification', e);
       rethrow;
     }
   }
@@ -437,11 +437,11 @@ class AuthService {
               SetOptions(merge: true),
             );
 
-        _logger.info('Successfully linked Google account: ${linkedUser.uid}');
+        _talker.info('Successfully linked Google account: ${linkedUser.uid}');
         return userData;
       } on FirebaseAuthException catch (e) {
         if (e.code == 'credential-already-in-use') {
-          _logger.warning('Google account already linked to another user');
+          _talker.warning('Google account already linked to another user');
 
           final existingCredential =
               await _auth.signInWithCredential(credential);
@@ -455,7 +455,7 @@ class AuthService {
         rethrow;
       }
     } catch (e) {
-      _logger.severe('Error linking with Google', e);
+      _talker.severe('Error linking with Google', e);
       rethrow;
     }
   }
@@ -468,7 +468,7 @@ class AuthService {
       );
       await _auth.currentUser?.linkWithCredential(credential);
     } catch (e) {
-      _logger.severe('Error linking with email/password', e);
+      _talker.severe('Error linking with email/password', e);
       rethrow;
     }
   }
@@ -496,7 +496,7 @@ class AuthService {
         rethrow;
       }
     } catch (e) {
-      _logger.severe('Error linking provider', e);
+      _talker.severe('Error linking provider', e);
       rethrow;
     }
   }

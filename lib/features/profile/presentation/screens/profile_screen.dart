@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/logging/talker_service.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../../../models/user_model.dart';
 import '../../models/user_stats.dart';
@@ -11,11 +12,10 @@ import '../widgets/collection_stats.dart';
 import '../widgets/deck_stats.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../providers/user_stats_provider.dart';
-import '../../../../core/logging/logger_service.dart';
 
 class ProfileScreen extends ConsumerWidget {
   final VoidCallback handleLogout;
-  final _logger = LoggerService();
+  final TalkerService _talker = TalkerService();
 
   ProfileScreen({
     super.key,
@@ -29,7 +29,7 @@ class ProfileScreen extends ConsumerWidget {
         context.go('/auth/login');
       }
     } catch (e, stackTrace) {
-      _logger.severe('Logout failed', e, stackTrace);
+      _talker.severe('Logout failed', e, stackTrace);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to logout: $e')),

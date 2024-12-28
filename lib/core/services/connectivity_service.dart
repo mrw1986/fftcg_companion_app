@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:internet_connection_checker/internet_connection_checker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../logging/logger_service.dart';
+import '../logging/talker_service.dart';
 
 final connectivityServiceProvider = Provider<ConnectivityService>((ref) {
   return ConnectivityService();
@@ -11,9 +11,8 @@ final connectivityServiceProvider = Provider<ConnectivityService>((ref) {
 class ConnectivityService {
   final Connectivity _connectivity = Connectivity();
   InternetConnectionChecker _connectionChecker = InternetConnectionChecker();
-  final LoggerService _logger = LoggerService();
+  final TalkerService _talker = TalkerService();
 
-  // Stream controllers
   final _connectivityController = StreamController<bool>.broadcast();
   bool _lastKnownStatus = false;
 
@@ -22,12 +21,10 @@ class ConnectivityService {
   }
 
   void _initializeConnectivityStream() {
-    // Listen to connectivity changes
     _connectivity.onConnectivityChanged.listen((result) async {
       await _checkAndUpdateConnectivity(result);
     });
 
-    // Initial check
     _connectivity.checkConnectivity().then((result) async {
       await _checkAndUpdateConnectivity(result);
     });
@@ -38,22 +35,18 @@ class ConnectivityService {
     try {
       bool hasConnection = false;
 
-      // If we have any connection type other than none
       if (!results.contains(ConnectivityResult.none)) {
-        // Verify actual internet connectivity
         hasConnection = await _connectionChecker.hasConnection;
       }
 
-      // Only emit if status has changed
       if (hasConnection != _lastKnownStatus) {
         _lastKnownStatus = hasConnection;
         _connectivityController.add(hasConnection);
-        _logger.info(
+        _talker.info(
             'Connectivity status changed: ${hasConnection ? 'online' : 'offline'}');
       }
     } catch (e, stackTrace) {
-      _logger.severe('Error checking connectivity', e, stackTrace);
-      // In case of error, assume we're offline
+      _talker.severe('Error checking connectivity', e, stackTrace);
       if (_lastKnownStatus) {
         _lastKnownStatus = false;
         _connectivityController.add(false);
@@ -73,7 +66,7 @@ class ConnectivityService {
       }
       return await _connectionChecker.hasConnection;
     } catch (e, stackTrace) {
-      _logger.severe('Error checking current connectivity', e, stackTrace);
+      _talker.severe('Error checking current connectivity', e, stackTrace);
       return false;
     }
   }
@@ -96,7 +89,7 @@ class ConnectivityService {
 
       return hostReachable.isSuccess;
     } catch (e, stackTrace) {
-      _logger.severe('Error checking stable connection', e, stackTrace);
+      _talker.severe('Error checking stable connection', e, stackTrace);
       return false;
     }
   }
@@ -115,10 +108,10 @@ class ConnectivityService {
           checkTimeout: timeout ?? _connectionChecker.checkTimeout,
           addresses: addresses ?? _connectionChecker.addresses,
         );
-        _logger.info('Connection checker configured successfully');
+        _talker.info('Connection checker configured successfully');
       }
     } catch (e, stackTrace) {
-      _logger.severe('Error configuring connection checker', e, stackTrace);
+      _talker.severe('Error configuring connection checker', e, stackTrace);
     }
   }
 
@@ -134,7 +127,7 @@ class ConnectivityService {
         lastChecked: DateTime.now(),
       );
     } catch (e, stackTrace) {
-      _logger.severe('Error getting detailed connection status', e, stackTrace);
+      _talker.severe('Error getting detailed connection status', e, stackTrace);
       return ConnectionStatus(
         isConnected: false,
         connectionTypes: [],

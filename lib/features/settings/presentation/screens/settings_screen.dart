@@ -7,7 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/settings_providers.dart';
 import '../../../auth/presentation/screens/account_linking_screen.dart';
 import '../screens/logs_viewer_screen.dart';
-import '../../../../core/logging/logger_service.dart';
+import '../../../../core/logging/talker_service.dart';
 import '../../../../core/utils/responsive_utils.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -24,7 +24,7 @@ class SettingsScreen extends ConsumerWidget {
     final themeColor = ref.watch(themeColorProvider);
     final size = MediaQuery.of(context).size;
     final isWideScreen = size.width > 900;
-    final logger = LoggerService();
+    final talker = TalkerService();
 
     return Scaffold(
       body: LayoutBuilder(
@@ -37,7 +37,7 @@ class SettingsScreen extends ConsumerWidget {
               _buildDataManagementSection(context, ref, settings),
               const Divider(),
               _buildAccountSection(
-                  context, ref, themeColor, logger, handleLogout),
+                  context, ref, themeColor, talker, handleLogout),
             ],
           );
 
@@ -172,7 +172,7 @@ class SettingsScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     Color themeColor,
-    LoggerService logger,
+    TalkerService talker,
     VoidCallback handleLogout,
   ) {
     return Column(
@@ -212,7 +212,7 @@ class SettingsScreen extends ConsumerWidget {
         ListTile(
           leading: Icon(Icons.logout, color: themeColor),
           title: const Text('Logout'),
-          onTap: () => _handleLogoutTap(context, ref, logger, handleLogout),
+          onTap: () => _handleLogoutTap(context, ref, talker, handleLogout),
         ),
       ],
     );
@@ -221,7 +221,7 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _handleLogoutTap(
     BuildContext context,
     WidgetRef ref,
-    LoggerService logger,
+    TalkerService talker,
     VoidCallback handleLogout,
   ) async {
     final confirmed = await showDialog<bool>(
@@ -250,11 +250,10 @@ class SettingsScreen extends ConsumerWidget {
         await ref.read(settingsNotifierProvider.notifier).logout();
         if (!context.mounted) return;
 
-        // Replace old navigation with GoRouter
         context.go('/auth/login');
         handleLogout();
       } catch (e) {
-        logger.severe('Logout failed', e);
+        talker.severe('Logout failed', e);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Failed to logout: $e')),

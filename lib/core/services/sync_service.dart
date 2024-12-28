@@ -1,10 +1,8 @@
-// lib/core/services/sync_service.dart
-
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../logging/logger_service.dart';
+import '../logging/talker_service.dart';
 import '../models/sync_status.dart';
 import 'hive_service.dart';
 import '../../features/cards/models/fftcg_card.dart';
@@ -28,7 +26,7 @@ class SyncResult {
 
 class SyncService {
   final HiveService _hiveService;
-  final LoggerService _logger;
+  final TalkerService _talker;
   final Ref _ref;
   final FirebaseFirestore _firestore;
   final AuthService _authService;
@@ -44,13 +42,13 @@ class SyncService {
     required HiveService hiveService,
     required Ref ref,
     FirebaseFirestore? firestore,
-    LoggerService? logger,
+    TalkerService? talker,
     AuthService? authService,
     ConnectivityService? connectivityService,
   })  : _hiveService = hiveService,
         _ref = ref,
         _firestore = firestore ?? FirebaseFirestore.instance,
-        _logger = logger ?? LoggerService(),
+        _talker = talker ?? TalkerService(),
         _authService = authService ?? AuthService(),
         _connectivityService = connectivityService ?? ConnectivityService();
 
@@ -64,13 +62,13 @@ class SyncService {
       const Duration(minutes: 15),
       (_) => syncPendingChanges(),
     );
-    _logger.info('Started periodic sync');
+    _talker.info('Started periodic sync');
   }
 
   void stopPeriodicSync() {
     _syncTimer?.cancel();
     _syncTimer = null;
-    _logger.info('Stopped periodic sync');
+    _talker.info('Stopped periodic sync');
   }
 
   Future<SyncResult> syncPendingChanges() async {
@@ -82,7 +80,7 @@ class SyncService {
     }
 
     _isSyncing = true;
-    _logger.info('Starting sync of pending changes');
+    _talker.info('Starting sync of pending changes');
 
     try {
       if (!await _connectivityService.hasStableConnection()) {
@@ -94,7 +92,7 @@ class SyncService {
 
       final isGuest = await _authService.isGuestSession();
       if (isGuest) {
-        _logger.info('Skipping sync for guest user');
+        _talker.info('Skipping sync for guest user');
         return SyncResult(
           success: true,
           error: 'Guest user, sync skipped',
@@ -114,7 +112,7 @@ class SyncService {
           .where((card) => card.syncStatus == SyncStatus.pending)
           .toList();
 
-      _logger.info('Found ${pendingCards.length} cards pending sync');
+      _talker.info('Found ${pendingCards.length} cards pending sync');
 
       if (pendingCards.isEmpty) {
         return SyncResult(success: true);
@@ -133,14 +131,14 @@ class SyncService {
       }
 
       await _updateLastSyncTime();
-      _logger.info('Sync completed successfully');
+      _talker.info('Sync completed successfully');
 
       return SyncResult(
         success: true,
         itemsSynced: totalSynced,
       );
     } catch (e, stackTrace) {
-      _logger.severe('Error during sync', e, stackTrace);
+      _talker.severe('Error during sync', e, stackTrace);
       return SyncResult(
         success: false,
         error: e.toString(),
@@ -181,7 +179,7 @@ class SyncService {
 
   Future<void> revertFailedConversion(String userId) async {
     try {
-      _logger.info('Starting conversion revert for user: $userId');
+      _talker.info('Starting conversion revert for user: $userId');
 
       await _firestore
           .collection('users')
@@ -200,9 +198,9 @@ class SyncService {
         await _hiveService.saveCard(card);
       }
 
-      _logger.info('Conversion revert completed successfully');
+      _talker.info('Conversion revert completed successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Error reverting conversion', e, stackTrace);
+      _talker.severe('Error reverting conversion', e, stackTrace);
       rethrow;
     }
   }
@@ -214,7 +212,7 @@ class SyncService {
           card.syncStatus == SyncStatus.pending ||
           card.syncStatus == SyncStatus.error);
     } catch (e, stackTrace) {
-      _logger.severe('Error checking sync status', e, stackTrace);
+      _talker.severe('Error checking sync status', e, stackTrace);
       return false;
     }
   }
@@ -226,9 +224,9 @@ class SyncService {
         card.markForSync();
         await _hiveService.saveCard(card);
       }
-      _logger.info('Reset sync status for all cards');
+      _talker.info('Reset sync status for all cards');
     } catch (e, stackTrace) {
-      _logger.severe('Error resetting sync status', e, stackTrace);
+      _talker.severe('Error resetting sync status', e, stackTrace);
       rethrow;
     }
   }
@@ -237,7 +235,7 @@ class SyncService {
     try {
       return _hiveService.getAllCards().length;
     } catch (e, stackTrace) {
-      _logger.severe('Error getting card count', e, stackTrace);
+      _talker.severe('Error getting card count', e, stackTrace);
       return 0;
     }
   }
@@ -250,7 +248,7 @@ class SyncService {
           ? DateTime.fromMillisecondsSinceEpoch(timestamp)
           : null;
     } catch (e, stackTrace) {
-      _logger.severe('Error getting last sync time', e, stackTrace);
+      _talker.severe('Error getting last sync time', e, stackTrace);
       return null;
     }
   }
@@ -263,7 +261,7 @@ class SyncService {
         DateTime.now().millisecondsSinceEpoch,
       );
     } catch (e, stackTrace) {
-      _logger.severe('Error updating last sync time', e, stackTrace);
+      _talker.severe('Error updating last sync time', e, stackTrace);
     }
   }
 
@@ -282,7 +280,7 @@ class SyncService {
 
       return SyncStatus.synced;
     } catch (e, stackTrace) {
-      _logger.severe('Error getting sync status', e, stackTrace);
+      _talker.severe('Error getting sync status', e, stackTrace);
       return SyncStatus.error;
     }
   }

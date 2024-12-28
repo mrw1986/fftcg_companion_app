@@ -1,30 +1,30 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../logging/talker_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/sync_service.dart';
-import '../logging/logger_service.dart';
 import '../../firebase_options.dart.bak';
 
-final loggerProvider = Provider<LoggerService>((ref) {
-  return LoggerService();
+final loggerProvider = Provider<TalkerService>((ref) {
+  return TalkerService();
 });
 
 final initializationProvider = FutureProvider<bool>((ref) async {
-  final logger = ref.watch(loggerProvider);
+  final talker = ref.watch(loggerProvider);
 
   try {
-    logger.info('Initializing Firebase');
+    talker.info('Initializing Firebase');
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    logger.info('Performing initial sync');
+    talker.info('Performing initial sync');
     await ref.read(syncServiceProvider).syncPendingChanges();
 
-    logger.info('App initialization completed successfully');
+    talker.info('App initialization completed successfully');
     return true;
   } catch (e, stack) {
-    logger.severe('App initialization failed', e, stack);
+    talker.severe('App initialization failed', e, stack);
     return false;
   }
 });
@@ -77,10 +77,10 @@ class AppState {
 
 class AppStateNotifier extends StateNotifier<AppState> {
   final Ref _ref;
-  final LoggerService _logger;
+  final TalkerService _logger;
 
   AppStateNotifier(this._ref)
-      : _logger = LoggerService(),
+      : _logger = TalkerService(),
         super(const AppState()) {
     _initialize();
   }

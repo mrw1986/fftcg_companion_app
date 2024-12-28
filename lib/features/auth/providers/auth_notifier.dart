@@ -3,7 +3,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/logging/logger_service.dart';
+import '../../../core/logging/talker_service.dart';
 import '../../../models/user_model.dart';
 import '../repositories/auth_repository.dart';
 import '../enums/auth_status.dart';
@@ -12,16 +12,16 @@ import 'auth_state.dart';
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _authRepository;
-  final LoggerService _logger;
+  final TalkerService _talker;
   final AuthService _authService;
   StreamSubscription<UserModel?>? _authStateSubscription;
 
   AuthNotifier({
     required AuthRepository authRepository,
-    LoggerService? logger,
+    TalkerService? talker,
     AuthService? authService,
   })  : _authRepository = authRepository,
-        _logger = logger ?? LoggerService(),
+        _talker = talker ?? TalkerService(),
         _authService = authService ?? AuthService(),
         super(const AuthState()) {
     _initialize();
@@ -30,7 +30,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signInWithGoogle() async {
     try {
       state = const AuthState(status: AuthStatus.loading);
-      _logger.info('Attempting Google sign in');
+      _talker.info('Attempting Google sign in');
 
       final user = await _authRepository.signInWithGoogle();
       if (user != null) {
@@ -38,13 +38,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
           status: AuthStatus.authenticated,
           user: user,
         );
-        _logger.info('Google sign in completed successfully');
+        _talker.info('Google sign in completed successfully');
       } else {
         state = const AuthState(status: AuthStatus.unauthenticated);
-        _logger.warning('Google sign in completed but no user returned');
+        _talker.warning('Google sign in completed but no user returned');
       }
     } catch (e, stackTrace) {
-      _logger.severe('Error signing in with Google', e, stackTrace);
+      _talker.severe('Error signing in with Google', e, stackTrace);
       state = const AuthState(status: AuthStatus.unauthenticated);
       rethrow;
     }
@@ -53,12 +53,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signInWithEmailPassword(String email, String password) async {
     try {
       state = const AuthState(status: AuthStatus.loading);
-      _logger.info('Attempting email/password sign in');
+      _talker.info('Attempting email/password sign in');
 
       await _authRepository.signInWithEmailPassword(email, password);
-      _logger.info('Email/password sign in completed successfully');
+      _talker.info('Email/password sign in completed successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Error signing in with email/password', e, stackTrace);
+      _talker.severe('Error signing in with email/password', e, stackTrace);
       state = const AuthState(status: AuthStatus.unauthenticated);
       rethrow;
     }
@@ -67,7 +67,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signInAsGuest() async {
     try {
       state = const AuthState(status: AuthStatus.loading);
-      _logger.info('Attempting guest sign in');
+      _talker.info('Attempting guest sign in');
 
       final guestUser = await _authRepository.signInAsGuest();
       if (guestUser != null) {
@@ -75,12 +75,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
           status: AuthStatus.guest,
           user: guestUser,
         );
-        _logger.info('Guest sign in completed successfully: ${guestUser.id}');
+        _talker.info('Guest sign in completed successfully: ${guestUser.id}');
       } else {
         throw Exception('Failed to create guest session');
       }
     } catch (e, stackTrace) {
-      _logger.severe('Error signing in as guest', e, stackTrace);
+      _talker.severe('Error signing in as guest', e, stackTrace);
       state = const AuthState(status: AuthStatus.unauthenticated);
       rethrow;
     }
@@ -89,13 +89,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signOut() async {
     try {
       state = const AuthState(status: AuthStatus.loading);
-      _logger.info('Attempting sign out');
+      _talker.info('Attempting sign out');
 
       await _authRepository.signOut();
       state = const AuthState(status: AuthStatus.unauthenticated);
-      _logger.info('Sign out completed successfully');
+      _talker.info('Sign out completed successfully');
     } catch (e, stackTrace) {
-      _logger.severe('Error signing out', e, stackTrace);
+      _talker.severe('Error signing out', e, stackTrace);
       state = const AuthState(status: AuthStatus.error);
       rethrow;
     }
@@ -108,7 +108,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   ) async {
     try {
       state = const AuthState(status: AuthStatus.loading);
-      _logger.info('Attempting user registration');
+      _talker.info('Attempting user registration');
 
       final user = await _authRepository.registerWithEmailPassword(
         email,
@@ -121,7 +121,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
       return user;
     } catch (e, stackTrace) {
-      _logger.severe('Error registering with email/password', e, stackTrace);
+      _talker.severe('Error registering with email/password', e, stackTrace);
       state = const AuthState(status: AuthStatus.unauthenticated);
       rethrow;
     }
@@ -130,9 +130,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> sendEmailVerification() async {
     try {
       await _authRepository.sendEmailVerification();
-      _logger.info('Email verification sent');
+      _talker.info('Email verification sent');
     } catch (e, stackTrace) {
-      _logger.severe('Error sending email verification', e, stackTrace);
+      _talker.severe('Error sending email verification', e, stackTrace);
       rethrow;
     }
   }
@@ -153,7 +153,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         );
       }
     } catch (e) {
-      _logger.severe('Error linking with Google', e);
+      _talker.severe('Error linking with Google', e);
       state = AuthState(
         status: AuthStatus.error,
         errorMessage: e is FirebaseAuthException
@@ -176,17 +176,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   @override
   void dispose() {
-    _logger.info('Disposing AuthNotifier');
+    _talker.info('Disposing AuthNotifier');
     _authStateSubscription?.cancel();
     super.dispose();
   }
 
   void _initialize() {
-    _logger.info('Initializing auth state listener');
+    _talker.info('Initializing auth state listener');
     _authStateSubscription?.cancel();
     _authStateSubscription = _authRepository.authStateChanges.listen(
       (user) async {
-        _logger.info('Auth state changed: ${user?.id}');
+        _talker.info('Auth state changed: ${user?.id}');
         if (user != null) {
           if (user.isGuest) {
             state = AuthState(status: AuthStatus.guest, user: user);
@@ -198,7 +198,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         }
       },
       onError: (error, stackTrace) {
-        _logger.severe('Auth state change error', error, stackTrace);
+        _talker.severe('Auth state change error', error, stackTrace);
         state = const AuthState(status: AuthStatus.error);
       },
     );

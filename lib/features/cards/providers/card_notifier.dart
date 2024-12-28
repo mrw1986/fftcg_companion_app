@@ -2,7 +2,7 @@
 
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/logging/logger_service.dart';
+import '../../../core/logging/talker_service.dart';
 import '../repositories/card_repository.dart';
 import '../services/card_cache_service.dart';
 import '../models/card_filter_options.dart';
@@ -12,17 +12,17 @@ import 'card_state.dart';
 class CardNotifier extends StateNotifier<CardState> {
   final CardRepository _repository;
   final CardCacheService _cacheService;
-  final LoggerService _logger;
+  final TalkerService _talker;
   StreamSubscription? _cardsSubscription;
   static const int _pageSize = 20;
 
   CardNotifier({
     required CardRepository repository,
     required CardCacheService cacheService,
-    LoggerService? logger,
+    TalkerService? talker,
   })  : _repository = repository,
         _cacheService = cacheService,
-        _logger = logger ?? LoggerService(),
+        _talker = talker ?? TalkerService(),
         super(const CardState()) {
     _initializeCards();
   }
@@ -37,13 +37,13 @@ class CardNotifier extends StateNotifier<CardState> {
       final savedFilters = _cacheService.getFilterOptions();
       if (savedFilters != null) {
         state = state.copyWith(filterOptions: savedFilters);
-        _logger.info('Restored saved filters: ${savedFilters.toJson()}');
+        _talker.info('Restored saved filters: ${savedFilters.toJson()}');
       }
 
       // Load initial page
       await loadNextPage(refresh: true);
     } catch (e, stackTrace) {
-      _logger.severe('Error initializing cards', e, stackTrace);
+      _talker.severe('Error initializing cards', e, stackTrace);
       state = state.copyWith(
         status: CardLoadingStatus.error,
         errorMessage: 'Failed to initialize cards storage',
@@ -86,9 +86,9 @@ Future<void> loadNextPage({bool refresh = false}) async {
         errorMessage: null,
       );
 
-      _logger.info('Loaded page $page with ${cards.length} cards');
+      _talker.info('Loaded page $page with ${cards.length} cards');
     } catch (e, stackTrace) {
-      _logger.severe('Error loading cards page', e, stackTrace);
+      _talker.severe('Error loading cards page', e, stackTrace);
       state = state.copyWith(
         status: CardLoadingStatus.error,
         errorMessage: 'Failed to load cards: ${e.toString()}',
@@ -103,11 +103,11 @@ Future<void> loadNextPage({bool refresh = false}) async {
 
   void toggleViewMode() {
     state = state.copyWith(isGridView: !state.isGridView);
-    _logger.info('View mode changed to: ${state.isGridView ? 'grid' : 'list'}');
+    _talker.info('View mode changed to: ${state.isGridView ? 'grid' : 'list'}');
   }
 
   void updateFilters(CardFilterOptions options) {
-    _logger.info('Updating filters: ${options.toJson()}');
+    _talker.info('Updating filters: ${options.toJson()}');
     state = state.copyWith(
       status: CardLoadingStatus.loading,
       filterOptions: options,
@@ -119,7 +119,7 @@ Future<void> loadNextPage({bool refresh = false}) async {
   void updateSearchQuery(String? query) {
     if (query == state.searchQuery) return;
 
-    _logger.info('Updating search query: $query');
+    _talker.info('Updating search query: $query');
     state = state.copyWith(
       searchQuery: query,
       status: CardLoadingStatus.loading,
@@ -129,7 +129,7 @@ Future<void> loadNextPage({bool refresh = false}) async {
 
   @override
   void dispose() {
-    _logger.info('Disposing CardNotifier');
+    _talker.info('Disposing CardNotifier');
     _cardsSubscription?.cancel();
     super.dispose();
   }

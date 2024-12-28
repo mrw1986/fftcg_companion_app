@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../core/logging/logger_service.dart';
+import '../../../core/logging/talker_service.dart';
 import '../models/card_filter_options.dart';
 import '../models/fftcg_card.dart';
 
 class CardCacheService {
   final SharedPreferences prefs;
-  final LoggerService logger;
+  final TalkerService _talker;
 
   static const String filterOptionsKey = 'card_filter_options';
   static const String recentCardsKey = 'recent_cards';
@@ -14,15 +14,15 @@ class CardCacheService {
 
   CardCacheService({
     required this.prefs,
-    LoggerService? logger,
-  }) : logger = logger ?? LoggerService();
+    TalkerService? talker,
+  }) : _talker = talker ?? TalkerService();
 
   Future<void> saveFilterOptions(CardFilterOptions options) async {
     try {
       await prefs.setString(filterOptionsKey, jsonEncode(options.toJson()));
-      logger.info('Filter options saved to cache');
+      _talker.info('Filter options saved to cache');
     } catch (e, stackTrace) {
-      logger.severe('Error saving filter options', e, stackTrace);
+      _talker.severe('Error saving filter options', e, stackTrace);
     }
   }
 
@@ -32,7 +32,7 @@ class CardCacheService {
       if (data == null) return null;
       return CardFilterOptions.fromJson(jsonDecode(data));
     } catch (e, stackTrace) {
-      logger.severe('Error loading filter options', e, stackTrace);
+      _talker.severe('Error loading filter options', e, stackTrace);
       return null;
     }
   }
@@ -52,10 +52,10 @@ class CardCacheService {
         }
 
         await prefs.setStringList(recentCardsKey, recentCards);
-        logger.info('Added card to recent cards: $cardNumber');
+        _talker.info('Added card to recent cards: $cardNumber');
       }
     } catch (e, stackTrace) {
-      logger.severe('Error adding recent card', e, stackTrace);
+      _talker.severe('Error adding recent card', e, stackTrace);
     }
   }
 
@@ -63,7 +63,7 @@ class CardCacheService {
     try {
       return prefs.getStringList(recentCardsKey) ?? [];
     } catch (e, stackTrace) {
-      logger.severe('Error getting recent cards', e, stackTrace);
+      _talker.severe('Error getting recent cards', e, stackTrace);
       return [];
     }
   }
@@ -71,9 +71,9 @@ class CardCacheService {
   Future<void> clearRecentCards() async {
     try {
       await prefs.remove(recentCardsKey);
-      logger.info('Recent cards cleared');
+      _talker.info('Recent cards cleared');
     } catch (e, stackTrace) {
-      logger.severe('Error clearing recent cards', e, stackTrace);
+      _talker.severe('Error clearing recent cards', e, stackTrace);
     }
   }
 }

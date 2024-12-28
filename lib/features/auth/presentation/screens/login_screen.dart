@@ -3,11 +3,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/logging/talker_service.dart';
 import '../../enums/auth_status.dart';
 import '../../providers/auth_providers.dart';
 import '../widgets/auth_button.dart';
 import '../widgets/auth_text_field.dart';
-import '../../../../core/logging/logger_service.dart';
 import '../widgets/email_verification_dialog.dart';
 import 'registration_screen.dart';
 import '../../../settings/presentation/screens/logs_viewer_screen.dart';
@@ -25,7 +25,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _logger = LoggerService();
+  final _talker = TalkerService();
   bool _isLoading = false;
   bool _isInputEnabled = true;
   DateTime? _lastBackPress; // Add this field for back press handling
@@ -33,7 +33,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _logger.info('Login screen initialized');
+    _talker.info('Login screen initialized');
   }
 
   @override
@@ -47,7 +47,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!mounted) return;
 
     final errorMessage = ref.read(authServiceProvider).getReadableAuthError(e);
-    _logger.severe('Firebase Auth Error: ${e.message}', e);
+    _talker.severe('Firebase Auth Error: ${e.message}', e);
 
     if (e.code == 'too-many-requests') {
       setState(() => _isInputEnabled = false);
@@ -86,7 +86,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final scaffold = ScaffoldMessenger.of(context);
 
     try {
-      _logger.info('Attempting email login for: ${_emailController.text}');
+      _talker.info('Attempting email login for: ${_emailController.text}');
       await ref.read(authNotifierProvider.notifier).signInWithEmailPassword(
             _emailController.text.trim(),
             _passwordController.text,
@@ -136,7 +136,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
       );
     } catch (e, stackTrace) {
-      _logger.severe('Email login failed', e, stackTrace);
+      _talker.severe('Email login failed', e, stackTrace);
       if (!mounted) return;
       scaffold.showSnackBar(
         SnackBar(
@@ -156,12 +156,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      _logger.info('Attempting Google sign-in');
+      _talker.info('Attempting Google sign-in');
       await ref.read(authNotifierProvider.notifier).signInWithGoogle();
     } on FirebaseAuthException catch (e) {
       _handleError(e);
     } catch (e, stackTrace) {
-      _logger.severe('Google sign-in failed', e, stackTrace);
+      _talker.severe('Google sign-in failed', e, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -182,10 +182,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      _logger.info('Attempting guest login');
+      _talker.info('Attempting guest login');
       await ref.read(authNotifierProvider.notifier).signInAsGuest();
     } catch (e, stackTrace) {
-      _logger.severe('Guest login failed', e, stackTrace);
+      _talker.severe('Guest login failed', e, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -215,7 +215,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      _logger.info('Attempting password reset for: ${_emailController.text}');
+      _talker.info('Attempting password reset for: ${_emailController.text}');
       await FirebaseAuth.instance.sendPasswordResetEmail(
         email: _emailController.text.trim(),
       );
@@ -231,7 +231,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } on FirebaseAuthException catch (e) {
       _handleError(e);
     } catch (e, stackTrace) {
-      _logger.severe('Password reset failed', e, stackTrace);
+      _talker.severe('Password reset failed', e, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

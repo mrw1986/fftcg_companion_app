@@ -1,7 +1,7 @@
 // lib/core/services/background_sync_service.dart
 
 import 'package:workmanager/workmanager.dart';
-import '../logging/logger_service.dart';
+import '../logging/talker_service.dart';
 import 'sync_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,7 +11,7 @@ const periodicSyncTask = 'periodicSync';
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
-    final logger = LoggerService();
+    final talker = TalkerService();
     try {
       switch (task) {
         case backgroundSyncTask:
@@ -27,19 +27,19 @@ void callbackDispatcher() {
       }
       return true;
     } catch (e, stackTrace) {
-      logger.severe('Background sync failed', e, stackTrace);
+      talker.severe('Background sync failed', e, stackTrace);
       return false;
     }
   });
 }
 
 class BackgroundSyncService {
-  final LoggerService _logger;
+  final TalkerService _talker;
   static const Duration _minimumSyncInterval = Duration(minutes: 15);
   static const Duration _periodicSyncInterval = Duration(hours: 1);
 
-  BackgroundSyncService({LoggerService? logger})
-      : _logger = logger ?? LoggerService();
+  BackgroundSyncService({TalkerService? talker})
+      : _talker = talker ?? TalkerService();
 
   Future<void> initialize() async {
     try {
@@ -47,9 +47,9 @@ class BackgroundSyncService {
         callbackDispatcher,
         isInDebugMode: false,
       );
-      _logger.info('Background sync service initialized');
+      _talker.info('Background sync service initialized');
     } catch (e, stackTrace) {
-      _logger.severe('Failed to initialize background sync', e, stackTrace);
+      _talker.severe('Failed to initialize background sync', e, stackTrace);
       rethrow;
     }
   }
@@ -66,9 +66,9 @@ class BackgroundSyncService {
         ),
         existingWorkPolicy: ExistingWorkPolicy.replace,
       );
-      _logger.info('Background sync scheduled');
+      _talker.info('Background sync scheduled');
     } catch (e, stackTrace) {
-      _logger.severe('Failed to schedule background sync', e, stackTrace);
+      _talker.severe('Failed to schedule background sync', e, stackTrace);
       rethrow;
     }
   }
@@ -85,9 +85,9 @@ class BackgroundSyncService {
         ),
         existingWorkPolicy: ExistingWorkPolicy.keep,
       );
-      _logger.info('Periodic sync enabled');
+      _talker.info('Periodic sync enabled');
     } catch (e, stackTrace) {
-      _logger.severe('Failed to enable periodic sync', e, stackTrace);
+      _talker.severe('Failed to enable periodic sync', e, stackTrace);
       rethrow;
     }
   }
@@ -95,9 +95,9 @@ class BackgroundSyncService {
   Future<void> disablePeriodicSync() async {
     try {
       await Workmanager().cancelByUniqueName(periodicSyncTask);
-      _logger.info('Periodic sync disabled');
+      _talker.info('Periodic sync disabled');
     } catch (e, stackTrace) {
-      _logger.severe('Failed to disable periodic sync', e, stackTrace);
+      _talker.severe('Failed to disable periodic sync', e, stackTrace);
       rethrow;
     }
   }
@@ -105,9 +105,9 @@ class BackgroundSyncService {
   Future<void> cancelAllSync() async {
     try {
       await Workmanager().cancelAll();
-      _logger.info('All sync tasks cancelled');
+      _talker.info('All sync tasks cancelled');
     } catch (e, stackTrace) {
-      _logger.severe('Failed to cancel sync tasks', e, stackTrace);
+      _talker.severe('Failed to cancel sync tasks', e, stackTrace);
       rethrow;
     }
   }

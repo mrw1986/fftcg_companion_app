@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../enums/auth_status.dart';
 import '../providers/auth_providers.dart';
 import '../presentation/widgets/email_verification_dialog.dart';
-import '../../../core/logging/logger_service.dart';
+import '../../../core/logging/talker_service.dart';
 import 'package:go_router/go_router.dart';
 
 class AuthWrapper extends ConsumerStatefulWidget {
@@ -24,7 +24,7 @@ class AuthWrapper extends ConsumerStatefulWidget {
 class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   Timer? _emailVerificationTimer;
   bool _showingDialog = false;
-  final _logger = LoggerService();
+  final _talker = TalkerService();
 
   @override
   void initState() {
@@ -85,7 +85,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
                 const SnackBar(content: Text('Verification email sent')),
               );
             } catch (e) {
-              _logger.severe('Failed to send verification email', e);
+              _talker.severe('Failed to send verification email', e);
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -101,7 +101,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
               if (!mounted) return;
               context.go('/auth/login');
             } catch (e) {
-              _logger.severe('Error during verification cancel/logout', e);
+              _talker.severe('Error during verification cancel/logout', e);
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -114,7 +114,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
         ),
       );
     } catch (e) {
-      _logger.severe('Error showing verification dialog', e);
+      _talker.severe('Error showing verification dialog', e);
     } finally {
       if (mounted) {
         setState(() => _showingDialog = false);

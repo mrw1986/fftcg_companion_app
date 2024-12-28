@@ -2,11 +2,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/logging/talker_service.dart';
 import '../../enums/auth_status.dart';
 import '../../providers/auth_providers.dart';
 import '../widgets/auth_button.dart';
 import '../widgets/auth_text_field.dart';
-import '../../../../core/logging/logger_service.dart';
 import 'login_screen.dart';
 import 'account_linking_screen.dart';
 import '../widgets/account_exists_dialog.dart';
@@ -24,14 +24,14 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _logger = LoggerService();
+  final _talker = TalkerService();
   bool _isLoading = false;
   bool _isInputEnabled = true;
 
   @override
   void initState() {
     super.initState();
-    _logger.info('Registration screen initialized');
+    _talker.info('Registration screen initialized');
   }
 
   @override
@@ -47,7 +47,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
     if (!mounted) return;
 
     final errorMessage = ref.read(authServiceProvider).getReadableAuthError(e);
-    _logger.severe('Firebase Auth Error: ${e.message}', e);
+    _talker.severe('Firebase Auth Error: ${e.message}', e);
 
     if (e.code == 'too-many-requests') {
       setState(() => _isInputEnabled = false);
@@ -76,7 +76,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
     setState(() => _isLoading = true);
 
     try {
-      _logger.info('Attempting registration for: ${_emailController.text}');
+      _talker.info('Attempting registration for: ${_emailController.text}');
 
       final result = await ref
           .read(authNotifierProvider.notifier)
@@ -143,7 +143,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
     } on FirebaseAuthException catch (e) {
       _handleError(e);
     } catch (e, stackTrace) {
-      _logger.severe('Unexpected error during registration', e, stackTrace);
+      _talker.severe('Unexpected error during registration', e, stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
