@@ -37,8 +37,11 @@ dependencies:
   firebase_auth: ^5.3.4
   shared_preferences_android: 2.3.4
   flutter_colorpicker: ^1.1.0
+  talker: ^4.5.4
+  talker_flutter: ^4.5.4
+  talker_dio_logger: ^4.5.4    # For your HTTP logging
+  talker_riverpod_logger: ^4.5.4  # For Riverpod integration
   
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
