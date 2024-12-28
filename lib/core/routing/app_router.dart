@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:talker_flutter/talker_flutter.dart';
 import '../../features/auth/presentation/auth_wrapper.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/registration_screen.dart';
@@ -17,6 +18,7 @@ import '../../features/auth/providers/auth_providers.dart';
 import '../../features/auth/enums/auth_status.dart';
 import '../../features/cards/models/fftcg_card.dart';
 import '../../features/settings/providers/settings_providers.dart';
+import '../logging/talker_service.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
@@ -195,11 +197,13 @@ class ScaffoldWithNavBar extends ConsumerWidget {
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authNotifierProvider);
+  final talker = ref.watch(talkerServiceProvider);
 
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/',
     debugLogDiagnostics: true,
+    observers: [TalkerRouteObserver(talker.talker)], // Add this line
     redirect: (context, state) {
       final isAuthenticated = authState.status == AuthStatus.authenticated ||
           authState.status == AuthStatus.guest;

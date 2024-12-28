@@ -6,7 +6,6 @@ import 'package:talker_riverpod_logger/talker_riverpod_logger.dart';
 class TalkerService {
   static final TalkerService _instance = TalkerService._internal();
   late final Talker _talker;
-  late final TalkerRiverpodObserver _riverpodObserver;
 
   Talker get talker => _talker;
 
@@ -28,10 +27,6 @@ class TalkerService {
       ),
     );
 
-    _riverpodObserver = TalkerRiverpodObserver(
-      talker: _talker,
-    );
-
     if (kDebugMode) {
       _talker.debug('Talker initialized in debug mode');
     }
@@ -44,8 +39,8 @@ class TalkerService {
   }
 
   void debug(String message) => _talker.debug(message);
-  void success(String message) => _talker
-      .info('[SUCCESS] $message'); // Changed to use info with a SUCCESS prefix
+  // Change success to info with a "[SUCCESS]" prefix
+  void success(String message) => _talker.info('[SUCCESS] $message');
 
   void handle(Object error, [StackTrace? stack, String? message]) {
     _talker.handle(error, stack, message);
@@ -63,7 +58,8 @@ class TalkerService {
     _talker.cleanHistory();
   }
 
-  ProviderObserver get riverpodObserver => _riverpodObserver;
+  ProviderObserver get riverpodObserver =>
+      TalkerRiverpodObserver(talker: _talker);
 }
 
 final talkerServiceProvider = Provider<TalkerService>((ref) {
