@@ -138,12 +138,39 @@ class _ProviderLogger extends ProviderObserver {
     Object? newValue,
     ProviderContainer container,
   ) {
-    debugPrint('''
-{
-  "provider": "${provider.name ?? provider.runtimeType}",
-  "previousValue": "$previousValue",
-  "newValue": "$newValue"
-}''');
+    final talker = TalkerService();
+    talker.debug('''
+Provider Update:
+  provider: ${provider.name ?? provider.runtimeType}
+  previousValue: $previousValue
+  newValue: $newValue
+''');
+  }
+
+  @override
+  void didAddProvider(
+    ProviderBase<Object?> provider,
+    Object? value,
+    ProviderContainer container,
+  ) {
+    final talker = TalkerService();
+    talker.debug('''
+Provider Added:
+  provider: ${provider.name ?? provider.runtimeType}
+  initialValue: $value
+''');
+  }
+
+  @override
+  void didDisposeProvider(
+    ProviderBase<Object?> provider,
+    ProviderContainer container,
+  ) {
+    final talker = TalkerService();
+    talker.debug('''
+Provider Disposed:
+  provider: ${provider.name ?? provider.runtimeType}
+''');
   }
 }
 

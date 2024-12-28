@@ -54,4 +54,19 @@ class CardState {
       currentPage: currentPage ?? this.currentPage,
     );
   }
+
+  @override
+  String toString() {
+    return '''CardState(
+      status: $status,
+      cards: ${cards.length} cards,
+      errorMessage: $errorMessage,
+      isGridView: $isGridView,
+      searchQuery: $searchQuery,
+      filterOptions: $filterOptions,
+      isLoading: $isLoading,
+      hasReachedEnd: $hasReachedEnd,
+      currentPage: $currentPage
+    )''';
+  }
 }

@@ -89,4 +89,9 @@ class CardFilterOptions {
       ascending: json['ascending'] as bool,
     );
   }
+
+  @override
+  String toString() {
+    return 'CardFilterOptions(elements: $elements, cardType: $cardType, costs: $costs, rarities: $rarities, job: $job, category: $category, opus: $opus, powerRange: $powerRange, sortOption: $sortOption, ascending: $ascending)';
+  }
 }

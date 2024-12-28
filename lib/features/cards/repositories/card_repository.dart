@@ -693,6 +693,11 @@ class CardRepository {
       _talker.severe('Failed to initialize card repository', e, stackTrace);
       rethrow;
     }
+  }
+
+  @override
+  String toString() {
+    return 'CardRepository(firestore: $_firestore, hiveService: $_hiveService)';
   }  
 }
 

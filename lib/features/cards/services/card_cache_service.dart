@@ -76,4 +76,11 @@ class CardCacheService {
       _talker.severe('Error clearing recent cards', e, stackTrace);
     }
   }
+
+  @override
+  String toString() {
+    final recentCount = getRecentCards().length;
+    final hasFilters = getFilterOptions() != null;
+    return 'CardCacheService(recentCards: $recentCount, hasStoredFilters: $hasFilters)';
+  }
 }
