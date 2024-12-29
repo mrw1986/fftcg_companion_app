@@ -21,14 +21,21 @@ Future<void> main() async {
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Initialize Firebase and cache manager
-    final cacheManager = CardCacheManager();
-    await cacheManager.initialize();
+    final talker = TalkerService();
 
-    // Initialize Firebase
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    // Initialize cache manager
+    await CardCacheManager.initialize();
+
+    // Configure error handling
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      talker.severe('Flutter Error', details.exception, details.stack);
+    };
+
+    PlatformDispatcher.instance.onError = (error, stack) {
+      talker.severe('Platform Error', error, stack);
+      return true;
+    };
 
     // Platform-specific optimizations
     if (Platform.isAndroid) {
@@ -52,19 +59,6 @@ Future<void> main() async {
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]);
-
-    final talker = TalkerService();
-
-    // Configure error handling
-    FlutterError.onError = (FlutterErrorDetails details) {
-      FlutterError.presentError(details);
-      talker.severe('Flutter Error', details.exception, details.stack);
-    };
-
-    PlatformDispatcher.instance.onError = (error, stack) {
-      talker.severe('Platform Error', error, stack);
-      return true;
-    };
 
     try {
       final sharedPrefs = await SharedPreferences.getInstance();

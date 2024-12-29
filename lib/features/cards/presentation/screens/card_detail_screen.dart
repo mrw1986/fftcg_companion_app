@@ -36,11 +36,25 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
   Future<String> _getImageUrl(String url) async {
     try {
       if (!url.contains('firebasestorage')) return url;
-      final ref = FirebaseStorage.instance.refFromURL(url);
+
+      // Extract the path from the URL
+      final uri = Uri.parse(url);
+      final pathSegments = uri.pathSegments;
+
+      // Get the path after 'card-images/'
+      final cardImagesIndex = pathSegments.indexOf('card-images');
+      if (cardImagesIndex == -1 || cardImagesIndex + 1 >= pathSegments.length) {
+        return url;
+      }
+
+      final storagePath = pathSegments.sublist(cardImagesIndex).join('/');
+
+      // Get download URL using the path
+      final ref = FirebaseStorage.instance.ref(storagePath);
       return await ref.getDownloadURL();
     } catch (e) {
       _talker.severe('Error getting image URL: $e');
-      rethrow;
+      return url; // Return original URL on error
     }
   }
 

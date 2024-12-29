@@ -79,18 +79,21 @@ class CardGridItem extends ConsumerWidget {
                       );
                     }
 
+                    final imageUrl = snapshot.data!;
                     return CachedNetworkImage(
                       cacheManager: cacheService.imageCacheManager,
-                      imageUrl: snapshot.data!,
+                      imageUrl: imageUrl,
                       fit: BoxFit.contain,
-                      placeholder: (context, url) {
+                      fadeInDuration: const Duration(milliseconds: 300),
+                      fadeOutDuration: const Duration(milliseconds: 300),
+                      placeholder: (context, imageUrl) {
                         _talker.debug(
-                            'Loading image for card: ${card.cardNumber} - URL: $url');
+                            'Loading image for card: ${card.cardNumber} - URL: $imageUrl');
                         return const Center(
                           child: CircularProgressIndicator(strokeWidth: 2),
                         );
                       },
-                      errorWidget: (context, url, error) {
+                      errorWidget: (context, imageUrl, error) {
                         _talker.severe(
                             'Error loading image for card: ${card.cardNumber}',
                             error);
@@ -113,10 +116,7 @@ class CardGridItem extends ConsumerWidget {
                           ),
                         );
                       },
-                      memCacheHeight: useHighRes ? 1000 : 500,
-                      memCacheWidth: useHighRes ? 1000 : 500,
-                      maxHeightDiskCache: useHighRes ? 2000 : 1000,
-                      useOldImageOnUrlChange: true,                      
+                      useOldImageOnUrlChange: true,
                     );
                   },
                 ),

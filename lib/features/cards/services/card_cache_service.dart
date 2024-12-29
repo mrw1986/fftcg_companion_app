@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:flutter_cache_manager_firebase/flutter_cache_manager_firebase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../core/logging/talker_service.dart';
 import '../models/card_filter_options.dart';
 import '../models/fftcg_card.dart';
@@ -10,6 +10,7 @@ import '../models/fftcg_card.dart';
 class CardCacheManager extends CacheManager {
   static const key = 'card_cache';
   static final CardCacheManager _instance = CardCacheManager._();
+
   factory CardCacheManager() => _instance;
 
   CardCacheManager._()
@@ -19,20 +20,31 @@ class CardCacheManager extends CacheManager {
             stalePeriod: const Duration(days: 30),
             maxNrOfCacheObjects: 500,
             repo: JsonCacheInfoRepository(databaseName: key),
-            fileService: FirebaseHttpFileService(),
             fileSystem: IOFileSystem(key),
+            fileService: HttpFileService(),
           ),
         );
 
-  Future<void> initialize() async {
-    await emptyCache();
+  static Future<void> initialize() async {
+    // Get temporary directory
+    final directory = await getTemporaryDirectory();
+
+    // Ensure directory exists
+    await directory.create(recursive: true);
+
+    // Clear any existing cache
+    try {
+      await _instance.emptyCache();
+    } catch (e) {
+      // Ignore errors during initialization
+    }
   }
 }
 
 class CardCacheService {
   final SharedPreferences prefs;
   final TalkerService _talker;
-  final _cacheManager = CardCacheManager();
+  final CacheManager _cacheManager;
   final _storage = FirebaseStorage.instance;
 
   static const String filterOptionsKey = 'card_filter_options';
@@ -42,7 +54,9 @@ class CardCacheService {
   CardCacheService({
     required this.prefs,
     TalkerService? talker,
-  }) : _talker = talker ?? TalkerService();
+    CacheManager? cacheManager,
+  })  : _talker = talker ?? TalkerService(),
+        _cacheManager = cacheManager ?? CardCacheManager();
 
   Future<String> _getDownloadUrl(String url) async {
     try {
@@ -51,7 +65,7 @@ class CardCacheService {
       return await ref.getDownloadURL();
     } catch (e) {
       _talker.severe('Error getting download URL: $e');
-      rethrow;
+      return url;
     }
   }
 
@@ -124,38 +138,16 @@ class CardCacheService {
     }
   }
 
-  Future<void> removeFromCache(String url) async {
-    try {
-      final file = await _cacheManager.getFileFromCache(url);
-      if (file != null) {
-        await _cacheManager.removeFile(url);
-        _talker.info('Removed from cache: $url');
-      }
-    } catch (e) {
-      _talker.severe('Error removing file from cache: $e');
-    }
-  }
-
-  Future<bool> isInCache(String url) async {
-    try {
-      final fileInfo = await _cacheManager.getFileFromCache(url);
-      return fileInfo != null;
-    } catch (e) {
-      _talker.severe('Error checking cache for file: $e');
-      return false;
-    }
-  }
-
   Future<void> preCacheCards(List<FFTCGCard> cards) async {
     try {
       final futures = cards.map((card) async {
         try {
           final lowResUrl = await _getDownloadUrl(card.lowResUrl);
-          await _cacheManager.downloadFile(lowResUrl);
+          await _cacheManager.getSingleFile(lowResUrl);
 
           if (cards.indexOf(card) < 5) {
             final highResUrl = await _getDownloadUrl(card.highResUrl);
-            await _cacheManager.downloadFile(highResUrl);
+            await _cacheManager.getSingleFile(highResUrl);
           }
         } catch (e) {
           _talker.warning('Error pre-caching card ${card.cardNumber}: $e');
@@ -175,8 +167,8 @@ class CardCacheService {
       final highResUrl = await _getDownloadUrl(card.highResUrl);
 
       await Future.wait([
-        _cacheManager.downloadFile(lowResUrl),
-        _cacheManager.downloadFile(highResUrl),
+        _cacheManager.getSingleFile(lowResUrl),
+        _cacheManager.getSingleFile(highResUrl),
       ]);
       _talker.info('Pre-cached images for card: ${card.cardNumber}');
     } catch (e) {
