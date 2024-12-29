@@ -63,6 +63,14 @@ class FFTCGCard extends HiveObject {
   @HiveField(17)
   DateTime? lastModifiedLocally;
 
+  static const String defaultImageUrl =
+      'https://storage.googleapis.com/fftcg-sync-service.firebasestorage.app/card-images/default/no_image.jpg';
+
+  String get effectiveHighResUrl =>
+      highResUrl.isNotEmpty ? highResUrl : defaultImageUrl;
+  String get effectiveLowResUrl =>
+      lowResUrl.isNotEmpty ? lowResUrl : defaultImageUrl;
+
   // Convenience getters for common card properties (not stored in Hive directly)
   String? get cardNumber => _getExtendedValue('Number');
   String? get description => _getExtendedValue('Description');

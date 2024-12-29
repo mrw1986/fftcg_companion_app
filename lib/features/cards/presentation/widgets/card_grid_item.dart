@@ -21,12 +21,23 @@ class CardGridItem extends ConsumerWidget {
 
   Future<String> _getImageUrl(String url) async {
     try {
+      if (url.isEmpty) {
+        _talker.warning('Empty URL provided for image');
+        return FFTCGCard.defaultImageUrl;
+      }
+
       if (!url.contains('firebasestorage')) return url;
-      final ref = FirebaseStorage.instance.refFromURL(url);
-      return await ref.getDownloadURL();
+
+      try {
+        final ref = FirebaseStorage.instance.refFromURL(url);
+        return await ref.getDownloadURL();
+      } catch (e) {
+        _talker.severe('Error getting Firebase Storage URL: $e');
+        return FFTCGCard.defaultImageUrl;
+      }
     } catch (e) {
       _talker.severe('Error getting image URL: $e');
-      rethrow;
+      return FFTCGCard.defaultImageUrl;
     }
   }
 
@@ -50,27 +61,14 @@ class CardGridItem extends ConsumerWidget {
                 tag: 'card_${card.cardNumber}',
                 child: FutureBuilder<String>(
                   future: _getImageUrl(
-                      useHighRes ? card.highResUrl : card.lowResUrl),
+                    useHighRes
+                        ? card.effectiveHighResUrl
+                        : card.effectiveLowResUrl,
+                  ),
                   builder: (context, snapshot) {
                     if (snapshot.hasError) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.error,
-                                color: Theme.of(context).colorScheme.error),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Image Error',
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.error,
-                                fontSize: 12,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      );
+                      _talker.severe('Error loading image: ${snapshot.error}');
+                      return _buildErrorWidget(context);
                     }
 
                     if (!snapshot.hasData) {
@@ -79,10 +77,9 @@ class CardGridItem extends ConsumerWidget {
                       );
                     }
 
-                    final imageUrl = snapshot.data!;
                     return CachedNetworkImage(
                       cacheManager: cacheService.imageCacheManager,
-                      imageUrl: imageUrl,
+                      imageUrl: snapshot.data!,
                       fit: BoxFit.contain,
                       fadeInDuration: const Duration(milliseconds: 300),
                       fadeOutDuration: const Duration(milliseconds: 300),
@@ -97,24 +94,7 @@ class CardGridItem extends ConsumerWidget {
                         _talker.severe(
                             'Error loading image for card: ${card.cardNumber}',
                             error);
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.error,
-                                  color: Theme.of(context).colorScheme.error),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Image Error',
-                                style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error,
-                                  fontSize: 12,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        );
+                        return _buildErrorWidget(context);
                       },
                       useOldImageOnUrlChange: true,
                     );
@@ -125,6 +105,24 @@ class CardGridItem extends ConsumerWidget {
             _buildCardInfo(context),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error, color: Theme.of(context).colorScheme.error),
+          Text(
+            'No Image',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+              fontSize: 10,
+            ),
+          ),
+        ],
       ),
     );
   }
