@@ -1,7 +1,6 @@
-// lib/features/cards/presentation/widgets/card_grid_item.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/logging/talker_service.dart';
 import '../../models/fftcg_card.dart';
@@ -19,6 +18,17 @@ class CardGridItem extends ConsumerWidget {
     required this.card,
     this.useHighRes = false,
   });
+
+  Future<String> _getImageUrl(String url) async {
+    try {
+      if (!url.contains('firebasestorage')) return url;
+      final ref = FirebaseStorage.instance.refFromURL(url);
+      return await ref.getDownloadURL();
+    } catch (e) {
+      _talker.severe('Error getting image URL: $e');
+      rethrow;
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -38,43 +48,77 @@ class CardGridItem extends ConsumerWidget {
             Expanded(
               child: Hero(
                 tag: 'card_${card.cardNumber}',
-                child: CachedNetworkImage(
-                  cacheManager: cacheService.imageCacheManager,
-                  imageUrl: useHighRes ? card.highResUrl : card.lowResUrl,
-                  fit: BoxFit.contain,
-                  placeholder: (context, url) {
-                    _talker.debug(
-                        'Loading image for card: ${card.cardNumber} - URL: $url');
-                    return const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    );
-                  },
-                  errorWidget: (context, url, error) {
-                    _talker.severe(
-                      'Error loading image for card: ${card.cardNumber}',
-                      error,
-                    );
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.error,
-                              color: Theme.of(context).colorScheme.error),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Image Error',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                              fontSize: 12,
+                child: FutureBuilder<String>(
+                  future: _getImageUrl(
+                      useHighRes ? card.highResUrl : card.lowResUrl),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.error,
+                                color: Theme.of(context).colorScheme.error),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Image Error',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                                fontSize: 12,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
-                            textAlign: TextAlign.center,
+                          ],
+                        ),
+                      );
+                    }
+
+                    if (!snapshot.hasData) {
+                      return const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      );
+                    }
+
+                    return CachedNetworkImage(
+                      cacheManager: cacheService.imageCacheManager,
+                      imageUrl: snapshot.data!,
+                      fit: BoxFit.contain,
+                      placeholder: (context, url) {
+                        _talker.debug(
+                            'Loading image for card: ${card.cardNumber} - URL: $url');
+                        return const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      },
+                      errorWidget: (context, url, error) {
+                        _talker.severe(
+                            'Error loading image for card: ${card.cardNumber}',
+                            error);
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.error,
+                                  color: Theme.of(context).colorScheme.error),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Image Error',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                  fontSize: 12,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        );
+                      },
+                      memCacheHeight: useHighRes ? 1000 : 500,
+                      memCacheWidth: useHighRes ? 1000 : 500,
+                      maxHeightDiskCache: useHighRes ? 2000 : 1000,
+                      useOldImageOnUrlChange: true,                      
                     );
                   },
-                  memCacheHeight: useHighRes ? 1000 : 500,
-                  memCacheWidth: useHighRes ? 1000 : 500,
                 ),
               ),
             ),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_cache_manager_firebase/flutter_cache_manager_firebase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,7 +25,6 @@ class CardCacheManager extends CacheManager {
         );
 
   Future<void> initialize() async {
-    // Initialize any required resources
     await emptyCache();
   }
 }
@@ -33,6 +33,7 @@ class CardCacheService {
   final SharedPreferences prefs;
   final TalkerService _talker;
   final _cacheManager = CardCacheManager();
+  final _storage = FirebaseStorage.instance;
 
   static const String filterOptionsKey = 'card_filter_options';
   static const String recentCardsKey = 'recent_cards';
@@ -42,6 +43,17 @@ class CardCacheService {
     required this.prefs,
     TalkerService? talker,
   }) : _talker = talker ?? TalkerService();
+
+  Future<String> _getDownloadUrl(String url) async {
+    try {
+      if (!url.contains('firebasestorage')) return url;
+      final ref = _storage.refFromURL(url);
+      return await ref.getDownloadURL();
+    } catch (e) {
+      _talker.severe('Error getting download URL: $e');
+      rethrow;
+    }
+  }
 
   Future<void> saveFilterOptions(CardFilterOptions options) async {
     try {
@@ -136,11 +148,19 @@ class CardCacheService {
 
   Future<void> preCacheCards(List<FFTCGCard> cards) async {
     try {
-      final futures = cards.map((card) => Future.wait([
-            _cacheManager.downloadFile(card.lowResUrl),
-            if (cards.indexOf(card) < 5)
-              _cacheManager.downloadFile(card.highResUrl),
-          ]));
+      final futures = cards.map((card) async {
+        try {
+          final lowResUrl = await _getDownloadUrl(card.lowResUrl);
+          await _cacheManager.downloadFile(lowResUrl);
+
+          if (cards.indexOf(card) < 5) {
+            final highResUrl = await _getDownloadUrl(card.highResUrl);
+            await _cacheManager.downloadFile(highResUrl);
+          }
+        } catch (e) {
+          _talker.warning('Error pre-caching card ${card.cardNumber}: $e');
+        }
+      });
 
       await Future.wait(futures);
       _talker.info('Pre-cached images for ${cards.length} cards');
@@ -151,9 +171,12 @@ class CardCacheService {
 
   Future<void> preCacheCard(FFTCGCard card) async {
     try {
+      final lowResUrl = await _getDownloadUrl(card.lowResUrl);
+      final highResUrl = await _getDownloadUrl(card.highResUrl);
+
       await Future.wait([
-        _cacheManager.downloadFile(card.lowResUrl),
-        _cacheManager.downloadFile(card.highResUrl),
+        _cacheManager.downloadFile(lowResUrl),
+        _cacheManager.downloadFile(highResUrl),
       ]);
       _talker.info('Pre-cached images for card: ${card.cardNumber}');
     } catch (e) {

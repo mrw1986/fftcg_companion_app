@@ -3,6 +3,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../../../../core/logging/talker_service.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../models/fftcg_card.dart';
@@ -30,6 +31,17 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
     _talker.info('Viewing card details: ${widget.card.cardNumber}');
     ref.read(cardCacheServiceProvider).preCacheCard(widget.card);
     ref.read(cardCacheServiceProvider).addRecentCard(widget.card);
+  }
+
+  Future<String> _getImageUrl(String url) async {
+    try {
+      if (!url.contains('firebasestorage')) return url;
+      final ref = FirebaseStorage.instance.refFromURL(url);
+      return await ref.getDownloadURL();
+    } catch (e) {
+      _talker.severe('Error getting image URL: $e');
+      rethrow;
+    }
   }
 
   @override
@@ -123,31 +135,63 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
   }
 
   Widget _buildCardImage(double height) {
-    return Consumer(
-      builder: (context, ref, child) {
-        final cacheService = ref.watch(cardCacheServiceProvider);
+    final cacheService = ref.watch(cardCacheServiceProvider);
 
-        return Hero(
-          tag: 'card_${widget.card.cardNumber}',
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            height: height,
-            child: CachedNetworkImage(
+    return Hero(
+      tag: 'card_${widget.card.cardNumber}',
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        height: height,
+        child: FutureBuilder<String>(
+          future: _getImageUrl(_isImageExpanded
+              ? widget.card.highResUrl
+              : widget.card.lowResUrl),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error,
+                        color: Theme.of(context).colorScheme.error),
+                    const Text('Failed to load image'),
+                  ],
+                ),
+              );
+            }
+
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            return CachedNetworkImage(
               cacheManager: cacheService.imageCacheManager,
-              imageUrl: _isImageExpanded
-                  ? widget.card.highResUrl
-                  : widget.card.lowResUrl,
+              imageUrl: snapshot.data!,
               fit: BoxFit.contain,
               placeholder: (context, url) => const Center(
                 child: CircularProgressIndicator(),
               ),
-              errorWidget: (context, url, error) => const Center(
-                child: Icon(Icons.error),
-              ),
-            ),
-          ),
-        );
-      },
+              errorWidget: (context, url, error) {
+                _talker.severe('Error loading detail image', error);
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error,
+                          color: Theme.of(context).colorScheme.error),
+                      const Text('Error loading image'),
+                    ],
+                  ),
+                );
+              },
+              memCacheHeight: _isImageExpanded ? 1000 : 500,
+              memCacheWidth: _isImageExpanded ? 1000 : 500,
+              maxHeightDiskCache: _isImageExpanded ? 2000 : 1000,
+              useOldImageOnUrlChange: true,
+            );
+          },
+        ),
+      ),
     );
   }
 
