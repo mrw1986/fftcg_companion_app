@@ -1,24 +1,29 @@
 // lib/features/cards/presentation/widgets/card_grid_item.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/utils/responsive_utils.dart';
+import '../../../../core/logging/talker_service.dart';
 import '../../models/fftcg_card.dart';
 import '../screens/card_detail_screen.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import '../../providers/card_providers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-class CardGridItem extends StatelessWidget {
+class CardGridItem extends ConsumerWidget {
   final FFTCGCard card;
   final bool useHighRes;
+  final TalkerService _talker = TalkerService();
 
-  const CardGridItem({
+  CardGridItem({
     super.key,
     required this.card,
     this.useHighRes = false,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cacheService = ref.watch(cardCacheServiceProvider);
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -34,12 +39,22 @@ class CardGridItem extends StatelessWidget {
               child: Hero(
                 tag: 'card_${card.cardNumber}',
                 child: CachedNetworkImage(
-                    imageUrl: useHighRes ? card.highResUrl : card.lowResUrl,
-                    fit: BoxFit.contain,
-                    placeholder: (context, url) => const Center(
+                  cacheManager: cacheService.imageCacheManager,
+                  imageUrl: useHighRes ? card.highResUrl : card.lowResUrl,
+                  fit: BoxFit.contain,
+                  placeholder: (context, url) {
+                    _talker.debug(
+                        'Loading image for card: ${card.cardNumber} - URL: $url');
+                    return const Center(
                       child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    errorWidget: (context, url, error) => Center(
+                    );
+                  },
+                  errorWidget: (context, url, error) {
+                    _talker.severe(
+                      'Error loading image for card: ${card.cardNumber}',
+                      error,
+                    );
+                    return Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -52,17 +67,15 @@ class CardGridItem extends StatelessWidget {
                               color: Theme.of(context).colorScheme.error,
                               fontSize: 12,
                             ),
+                            textAlign: TextAlign.center,
                           ),
                         ],
                       ),
-                    ),
-                    // Update cache manager
-                    cacheManager: DefaultCacheManager(),
-                    maxHeightDiskCache: 500,
-                    maxWidthDiskCache: 500,
-                    memCacheHeight: useHighRes ? 1000 : 500,
-                    memCacheWidth: useHighRes ? 1000 : 500,
-                  )
+                    );
+                  },
+                  memCacheHeight: useHighRes ? 1000 : 500,
+                  memCacheWidth: useHighRes ? 1000 : 500,
+                ),
               ),
             ),
             _buildCardInfo(context),

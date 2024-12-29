@@ -28,6 +28,7 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
   void initState() {
     super.initState();
     _talker.info('Viewing card details: ${widget.card.cardNumber}');
+    ref.read(cardCacheServiceProvider).preCacheCard(widget.card);
     ref.read(cardCacheServiceProvider).addRecentCard(widget.card);
   }
 
@@ -122,23 +123,31 @@ class _CardDetailScreenState extends ConsumerState<CardDetailScreen> {
   }
 
   Widget _buildCardImage(double height) {
-    return Hero(
-      tag: 'card_${widget.card.cardNumber}',
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        height: height,
-        child: CachedNetworkImage(
-          imageUrl:
-              _isImageExpanded ? widget.card.highResUrl : widget.card.lowResUrl,
-          fit: BoxFit.contain,
-          placeholder: (context, url) => const Center(
-            child: CircularProgressIndicator(),
+    return Consumer(
+      builder: (context, ref, child) {
+        final cacheService = ref.watch(cardCacheServiceProvider);
+
+        return Hero(
+          tag: 'card_${widget.card.cardNumber}',
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            height: height,
+            child: CachedNetworkImage(
+              cacheManager: cacheService.imageCacheManager,
+              imageUrl: _isImageExpanded
+                  ? widget.card.highResUrl
+                  : widget.card.lowResUrl,
+              fit: BoxFit.contain,
+              placeholder: (context, url) => const Center(
+                child: CircularProgressIndicator(),
+              ),
+              errorWidget: (context, url, error) => const Center(
+                child: Icon(Icons.error),
+              ),
+            ),
           ),
-          errorWidget: (context, url, error) => const Center(
-            child: Icon(Icons.error),
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 

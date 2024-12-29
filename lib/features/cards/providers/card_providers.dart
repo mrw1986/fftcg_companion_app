@@ -168,3 +168,23 @@ final currentSortOptionProvider = Provider<CardSortOption>((ref) {
 final sortAscendingProvider = Provider<bool>((ref) {
   return ref.watch(selectedFiltersProvider)?.ascending ?? true;
 });
+
+final imageCacheManagerProvider = Provider<CardCacheManager>((ref) {
+  return CardCacheManager();
+});
+
+final cardPreCacheProvider =
+    Provider<Future<void> Function(List<FFTCGCard>)>((ref) {
+  final cacheManager = ref.watch(cardCacheServiceProvider).imageCacheManager;
+
+  return (List<FFTCGCard> cards) async {
+    final futures = cards.map((card) => Future.wait([
+          cacheManager.downloadFile(card.lowResUrl),
+          // Only pre-cache high res for the first few cards
+          if (cards.indexOf(card) < 5)
+            cacheManager.downloadFile(card.highResUrl),
+        ]));
+
+    await Future.wait(futures);
+  };
+});

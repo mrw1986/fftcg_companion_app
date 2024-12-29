@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io' show Platform;
 import 'core/theme/app_theme.dart';
 import 'features/cards/providers/card_providers.dart';
+import 'features/cards/services/card_cache_service.dart';
 import 'firebase_options.dart.bak';
 import 'features/settings/providers/settings_providers.dart';
 import 'services/app_check_service.dart';
@@ -19,6 +20,15 @@ import 'core/logging/talker_service.dart';
 Future<void> main() async {
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // Initialize Firebase and cache manager
+    final cacheManager = CardCacheManager();
+    await cacheManager.initialize();
+
+    // Initialize Firebase
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
 
     // Platform-specific optimizations
     if (Platform.isAndroid) {

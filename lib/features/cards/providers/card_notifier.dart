@@ -58,8 +58,7 @@ Future<void> loadNextPage({bool refresh = false}) async {
       state = state.copyWith(isLoading: true);
 
       final page = refresh ? 0 : state.currentPage + 1;
-      final List<FFTCGCard> cards =
-          await _repository.getCardsPage(page); // Add explicit type here
+      final List<FFTCGCard> cards = await _repository.getCardsPage(page);
 
       if (cards.isEmpty && page == 0) {
         state = state.copyWith(
@@ -77,6 +76,10 @@ Future<void> loadNextPage({bool refresh = false}) async {
       }
 
       final updatedCards = refresh ? cards : [...state.cards, ...cards];
+
+      // Pre-cache images for better performance
+      _talker.info('Pre-caching images for ${cards.length} cards');
+      await _cacheService.preCacheCards(cards);
 
       state = state.copyWith(
         status: CardLoadingStatus.loaded,

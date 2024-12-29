@@ -2,22 +2,27 @@
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/utils/responsive_utils.dart';
+import '../../../../core/logging/talker_service.dart';
 import '../../models/fftcg_card.dart';
 import '../screens/card_detail_screen.dart';
+import '../../providers/card_providers.dart';
 
-class CardListItem extends StatelessWidget {
+class CardListItem extends ConsumerWidget {
   final FFTCGCard card;
   final double height;
+  final TalkerService _talker = TalkerService();
 
-  const CardListItem({
+  CardListItem({
     super.key,
     required this.card,
     this.height = 72.0,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cacheService = ref.watch(cardCacheServiceProvider);
     final isDesktop = ResponsiveUtils.isDesktop(context);
     final imageSize = isDesktop ? 80.0 : 60.0;
     final elevation = ResponsiveUtils.isPhone(context) ? 2.0 : 4.0;
@@ -44,17 +49,41 @@ class CardListItem extends StatelessWidget {
           child: SizedBox(
             width: imageSize,
             child: CachedNetworkImage(
+              cacheManager: cacheService.imageCacheManager,
               imageUrl: card.lowResUrl,
               fit: BoxFit.contain,
               memCacheWidth: 120,
               memCacheHeight: 168,
               placeholderFadeInDuration: const Duration(milliseconds: 300),
-              placeholder: (context, url) => const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              errorWidget: (context, url, error) => const Center(
-                child: Icon(Icons.error),
-              ),
+              placeholder: (context, url) {
+                _talker.debug(
+                    'Loading list image for card: ${card.cardNumber} - URL: $url');
+                return const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                );
+              },
+              errorWidget: (context, url, error) {
+                _talker.severe(
+                  'Error loading list image for card: ${card.cardNumber}',
+                  error,
+                );
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error,
+                          color: Theme.of(context).colorScheme.error),
+                      Text(
+                        'Error',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ),

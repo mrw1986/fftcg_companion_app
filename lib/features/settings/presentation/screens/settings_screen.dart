@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:go_router/go_router.dart';
+import '../../../cards/services/card_cache_service.dart';
 import '../../providers/settings_providers.dart';
 import '../../../auth/presentation/screens/account_linking_screen.dart';
 import '../screens/logs_viewer_screen.dart';
 import '../../../../core/logging/talker_service.dart';
 import '../../../../core/utils/responsive_utils.dart';
+
 
 class SettingsScreen extends ConsumerWidget {
   final VoidCallback handleLogout;
@@ -162,6 +164,29 @@ class SettingsScreen extends ConsumerWidget {
           value: settings.persistSort,
           onChanged: (bool value) {
             ref.read(settingsNotifierProvider.notifier).setPersistSort(value);
+          },
+        ),
+        ListTile(
+          leading: Icon(Icons.cleaning_services,
+              color: Theme.of(context).colorScheme.primary),
+          title: const Text('Clear Image Cache'),
+          subtitle: const Text('Free up space used by cached images'),
+          onTap: () async {
+            try {
+              final cacheManager = CardCacheManager();
+              await cacheManager.emptyCache();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Image cache cleared')),
+                );
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to clear cache: $e')),
+                );
+              }
+            }
           },
         ),
       ],

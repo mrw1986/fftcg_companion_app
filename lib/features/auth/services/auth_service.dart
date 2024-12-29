@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import '../../../services/app_check_service.dart';
 import '../../../core/logging/talker_service.dart';
+import '../../cards/services/card_cache_service.dart';
 
 class AuthService {
   final _auth = FirebaseAuth.instance;
@@ -254,6 +255,9 @@ class AuthService {
         await _firestore.collection('users').doc(currentUser.uid).delete();
         await currentUser.delete();
       }
+
+      // Clear image cache on logout
+      await CardCacheManager().emptyCache();
 
       await Future.wait([
         _auth.signOut(),

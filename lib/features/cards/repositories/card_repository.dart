@@ -153,6 +153,8 @@ class CardRepository {
       // First check local cache
       final localCards = _hiveService.getAllCards();
       if (localCards.isNotEmpty) {
+        _talker.info(
+            'Using cached cards. First card URL: ${localCards.first.lowResUrl}');
         final end = start + pageSize;
         if (start < localCards.length) {
           return localCards.sublist(
@@ -179,8 +181,12 @@ class CardRepository {
       }
 
       final snapshot = await query.get();
-      final cards =
-          snapshot.docs.map((doc) => FFTCGCard.fromFirestore(doc)).toList();
+      final cards = snapshot.docs.map((doc) {
+        final card = FFTCGCard.fromFirestore(doc);
+        _talker.info(
+            'Loaded card ${card.cardNumber} with URLs - Low: ${card.lowResUrl}, High: ${card.highResUrl}');
+        return card;
+      }).toList();
 
       // Cache the cards
       await _hiveService.saveCards(cards);
