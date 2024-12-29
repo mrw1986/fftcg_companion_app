@@ -11,7 +11,7 @@ import 'dart:io' show Platform;
 import 'core/theme/app_theme.dart';
 import 'features/cards/providers/card_providers.dart';
 import 'features/cards/services/card_cache_service.dart';
-import 'firebase_options.dart.bak';
+import 'firebase_options.dart';
 import 'features/settings/providers/settings_providers.dart';
 import 'services/app_check_service.dart';
 import 'core/routing/app_router.dart';
