@@ -60,19 +60,16 @@ Future<void> loadNextPage({bool refresh = false}) async {
       final page = refresh ? 0 : state.currentPage + 1;
       final List<FFTCGCard> cards = await _repository.getCardsPage(page);
 
-      if (cards.isEmpty && page == 0) {
+      // Only set hasReachedEnd if we get zero cards
+      if (cards.isEmpty) {
         state = state.copyWith(
           status: CardLoadingStatus.loaded,
-          cards: [],
+          cards: refresh ? [] : state.cards,
           hasReachedEnd: true,
           isLoading: false,
-          currentPage: 0,
+          currentPage: page,
         );
         return;
-      }
-
-      if (cards.length < _pageSize) {
-        state = state.copyWith(hasReachedEnd: true);
       }
 
       final updatedCards = refresh ? cards : [...state.cards, ...cards];
@@ -87,6 +84,8 @@ Future<void> loadNextPage({bool refresh = false}) async {
         isLoading: false,
         currentPage: page,
         errorMessage: null,
+        // Only set hasReachedEnd if we get fewer cards than requested
+        hasReachedEnd: cards.length < _pageSize,
       );
 
       _talker.info('Loaded page $page with ${cards.length} cards');

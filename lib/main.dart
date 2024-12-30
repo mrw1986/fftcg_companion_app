@@ -26,7 +26,23 @@ Future<void> main() async {
     // Initialize cache manager
     await CardCacheManager.initialize();
 
-    // Configure error handling
+    // Create the container first
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(
+          await SharedPreferences.getInstance(),
+        ),
+      ],
+      observers: [
+        talker.riverpodObserver,
+        if (kDebugMode) _ProviderLogger(),
+      ],
+    );
+
+    // Now we can warm up the cache
+    await _warmupCache(container);
+
+    // Rest of the initialization...
     FlutterError.onError = (FlutterErrorDetails details) {
       FlutterError.presentError(details);
       talker.severe('Flutter Error', details.exception, details.stack);
@@ -117,6 +133,15 @@ Future<void> main() async {
   }, (error, stack) {
     TalkerService().severe('Unhandled error', error, stack);
   });
+}
+
+Future<void> _warmupCache(ProviderContainer container) async {
+  try {
+    final cardNotifier = container.read(cardNotifierProvider.notifier);
+    await cardNotifier.loadNextPage(refresh: true);
+  } catch (e) {
+    // Ignore cache warmup errors
+  }
 }
 
 Future<void> _initializeFirebase(

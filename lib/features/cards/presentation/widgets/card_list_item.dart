@@ -26,17 +26,31 @@ class CardListItem extends ConsumerWidget {
         return FFTCGCard.defaultImageUrl;
       }
 
-      if (!url.contains('firebasestorage')) return url;
+      // If the URL is already a full download URL, return it
+      if (url.startsWith('https://') && !url.contains('googleapis.com')) {
+        return url;
+      }
+
+      // Extract the path after 'card-images/'
+      final pathMatch = RegExp(r'card-images/(.+)').firstMatch(url);
+      if (pathMatch == null) {
+        _talker.warning('Invalid image path format: $url');
+        return FFTCGCard.defaultImageUrl;
+      }
+
+      final imagePath = 'card-images/${pathMatch.group(1)}';
 
       try {
-        final ref = FirebaseStorage.instance.refFromURL(url);
-        return await ref.getDownloadURL();
+        final ref = FirebaseStorage.instance.ref(imagePath);
+        final downloadUrl = await ref.getDownloadURL();
+        _talker.debug('Generated download URL: $downloadUrl');
+        return downloadUrl;
       } catch (e) {
-        _talker.severe('Error getting Firebase Storage URL: $e');
+        _talker.warning('Error getting Firebase Storage download URL: $e');
         return FFTCGCard.defaultImageUrl;
       }
     } catch (e) {
-      _talker.severe('Error getting image URL: $e');
+      _talker.severe('Error processing image URL: $e');
       return FFTCGCard.defaultImageUrl;
     }
   }

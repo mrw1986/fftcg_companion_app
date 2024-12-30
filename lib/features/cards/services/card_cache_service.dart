@@ -18,7 +18,7 @@ class CardCacheManager extends CacheManager {
           Config(
             key,
             stalePeriod: const Duration(days: 30),
-            maxNrOfCacheObjects: 500,
+            maxNrOfCacheObjects: 1000, // Increased from 500
             repo: JsonCacheInfoRepository(databaseName: key),
             fileSystem: IOFileSystem(key),
             fileService: HttpFileService(),
@@ -26,18 +26,11 @@ class CardCacheManager extends CacheManager {
         );
 
   static Future<void> initialize() async {
-    // Get temporary directory
     final directory = await getTemporaryDirectory();
-
-    // Ensure directory exists
     await directory.create(recursive: true);
 
-    // Clear any existing cache
-    try {
-      await _instance.emptyCache();
-    } catch (e) {
-      // Ignore errors during initialization
-    }
+    // Don't clear cache on initialization
+    // await _instance.emptyCache();
   }
 }
 
@@ -58,13 +51,29 @@ class CardCacheService {
   })  : _talker = talker ?? TalkerService(),
         _cacheManager = cacheManager ?? CardCacheManager();
 
-  Future<String> _getDownloadUrl(String url) async {
+  Future<String> _getImageUrl(String url) async {
     try {
       if (!url.contains('firebasestorage')) return url;
-      final ref = _storage.refFromURL(url);
-      return await ref.getDownloadURL();
+
+      // Extract the path from the URL
+      final uri = Uri.parse(url);
+      final pathSegments = uri.pathSegments;
+
+      // Get the path after 'card-images/'
+      final cardImagesIndex = pathSegments.indexOf('card-images');
+      if (cardImagesIndex == -1 || cardImagesIndex + 1 >= pathSegments.length) {
+        return url;
+      }
+
+      final storagePath = pathSegments.sublist(cardImagesIndex).join('/');
+
+      // Get download URL using the path
+      final ref = _storage.ref(storagePath);
+      final downloadUrl = await ref.getDownloadURL();
+      _talker.debug('Generated download URL: $downloadUrl');
+      return downloadUrl;
     } catch (e) {
-      _talker.severe('Error getting download URL: $e');
+      _talker.severe('Error getting image URL: $e');
       return url;
     }
   }
@@ -138,41 +147,79 @@ class CardCacheService {
     }
   }
 
-  Future<void> preCacheCards(List<FFTCGCard> cards) async {
-    try {
-      final futures = cards.map((card) async {
-        try {
-          final lowResUrl = await _getDownloadUrl(card.lowResUrl);
-          await _cacheManager.getSingleFile(lowResUrl);
+  Future<void> preCacheCard(FFTCGCard card) async {
+    const maxRetries = 3;
+    int retryCount = 0;
 
-          if (cards.indexOf(card) < 5) {
-            final highResUrl = await _getDownloadUrl(card.highResUrl);
-            await _cacheManager.getSingleFile(highResUrl);
-          }
-        } catch (e) {
-          _talker.warning('Error pre-caching card ${card.cardNumber}: $e');
+    while (retryCount < maxRetries) {
+      try {
+        final lowResUrl = await _getImageUrl(card.effectiveLowResUrl);
+        final highResUrl = await _getImageUrl(card.effectiveHighResUrl);
+
+        await Future.wait([
+          _cacheManager.getSingleFile(lowResUrl),
+          _cacheManager.getSingleFile(highResUrl),
+        ]);
+
+        _talker.info('Pre-cached images for card: ${card.cardNumber}');
+        break;
+      } catch (e) {
+        retryCount++;
+        if (retryCount >= maxRetries) {
+          _talker.warning(
+            'Failed to pre-cache card after $maxRetries attempts: $e',
+          );
+        } else {
+          await Future.delayed(Duration(seconds: retryCount));
         }
-      });
-
-      await Future.wait(futures);
-      _talker.info('Pre-cached images for ${cards.length} cards');
-    } catch (e) {
-      _talker.warning('Error pre-caching cards: $e');
+      }
     }
   }
 
-  Future<void> preCacheCard(FFTCGCard card) async {
+  Future<void> preCacheCards(List<FFTCGCard> cards) async {
     try {
-      final lowResUrl = await _getDownloadUrl(card.lowResUrl);
-      final highResUrl = await _getDownloadUrl(card.highResUrl);
+      _talker.info('Pre-caching images for ${cards.length} cards');
 
-      await Future.wait([
-        _cacheManager.getSingleFile(lowResUrl),
-        _cacheManager.getSingleFile(highResUrl),
-      ]);
-      _talker.info('Pre-cached images for card: ${card.cardNumber}');
+      // Process in larger batches
+      const batchSize = 10; // Increased from 5
+      for (var i = 0; i < cards.length; i += batchSize) {
+        final end =
+            (i + batchSize < cards.length) ? i + batchSize : cards.length;
+        final batch = cards.sublist(i, end);
+
+        await Future.wait(
+          batch.map((card) async {
+            try {
+              // Always cache low-res version
+              final lowResUrl = await _getImageUrl(card.effectiveLowResUrl);
+              await _cacheManager.getSingleFile(
+                lowResUrl,
+                // Remove options parameter as it's not supported in the base package
+              );
+
+              // Cache high-res only for visible cards
+              if (cards.indexOf(card) < 15) {
+                final highResUrl = await _getImageUrl(card.effectiveHighResUrl);
+                await _cacheManager.getSingleFile(
+                  highResUrl,
+                  // Remove options parameter as it's not supported in the base package
+                );
+              }
+            } catch (e) {
+              _talker.warning('Error pre-caching card ${card.cardNumber}: $e');
+            }
+          }),
+        );
+
+        // Shorter delay between batches
+        if (end < cards.length) {
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+      }
+
+      _talker.info('Pre-cached images for ${cards.length} cards');
     } catch (e) {
-      _talker.warning('Error pre-caching card: $e');
+      _talker.warning('Error pre-caching cards: $e');
     }
   }
 

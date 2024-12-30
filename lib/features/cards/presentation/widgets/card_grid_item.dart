@@ -26,17 +26,31 @@ class CardGridItem extends ConsumerWidget {
         return FFTCGCard.defaultImageUrl;
       }
 
-      if (!url.contains('firebasestorage')) return url;
+      // If the URL is already a full download URL, return it
+      if (url.startsWith('https://') && !url.contains('googleapis.com')) {
+        return url;
+      }
+
+      // Extract the path after 'card-images/'
+      final pathMatch = RegExp(r'card-images/(.+)').firstMatch(url);
+      if (pathMatch == null) {
+        _talker.warning('Invalid image path format: $url');
+        return FFTCGCard.defaultImageUrl;
+      }
+
+      final imagePath = 'card-images/${pathMatch.group(1)}';
 
       try {
-        final ref = FirebaseStorage.instance.refFromURL(url);
-        return await ref.getDownloadURL();
+        final ref = FirebaseStorage.instance.ref(imagePath);
+        final downloadUrl = await ref.getDownloadURL();
+        _talker.debug('Generated download URL: $downloadUrl');
+        return downloadUrl;
       } catch (e) {
-        _talker.severe('Error getting Firebase Storage URL: $e');
+        _talker.warning('Error getting Firebase Storage download URL: $e');
         return FFTCGCard.defaultImageUrl;
       }
     } catch (e) {
-      _talker.severe('Error getting image URL: $e');
+      _talker.severe('Error processing image URL: $e');
       return FFTCGCard.defaultImageUrl;
     }
   }
@@ -85,17 +99,41 @@ class CardGridItem extends ConsumerWidget {
                       fadeOutDuration: const Duration(milliseconds: 300),
                       placeholder: (context, imageUrl) {
                         _talker.debug(
-                            'Loading image for card: ${card.cardNumber} - URL: $imageUrl');
+                          'Loading image for card: ${card.cardNumber} - URL: $imageUrl',
+                        );
                         return const Center(
                           child: CircularProgressIndicator(strokeWidth: 2),
                         );
                       },
                       errorWidget: (context, imageUrl, error) {
                         _talker.severe(
-                            'Error loading image for card: ${card.cardNumber}',
-                            error);
-                        return _buildErrorWidget(context);
+                          'Error loading image for card: ${card.cardNumber}',
+                          error,
+                        );
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.broken_image_outlined,
+                                color: Theme.of(context).colorScheme.error,
+                                size: 32,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Image Not Available',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        );
                       },
+                      memCacheHeight: useHighRes ? 1000 : 500,
+                      memCacheWidth: useHighRes ? 1000 : 500,
                       useOldImageOnUrlChange: true,
                     );
                   },
@@ -114,13 +152,19 @@ class CardGridItem extends ConsumerWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error, color: Theme.of(context).colorScheme.error),
+          Icon(
+            Icons.broken_image_outlined,
+            color: Theme.of(context).colorScheme.error,
+            size: 32,
+          ),
+          const SizedBox(height: 4),
           Text(
-            'No Image',
+            'Image Not Available',
             style: TextStyle(
+              fontSize: 12,
               color: Theme.of(context).colorScheme.error,
-              fontSize: 10,
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),

@@ -1,5 +1,3 @@
-// lib/services/app_check_service.dart
-
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,35 +21,29 @@ class AppCheckService {
 
   Future<void> initialize() async {
     try {
-      // Initialize App Check with appropriate provider
-      await FirebaseAppCheck.instance.activate(
-        androidProvider:
-            kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-        appleProvider:
-            kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
-      );
-
-      // Set up token change listener
-      _tokenSubscription = FirebaseAppCheck.instance.onTokenChange.listen(
-        _handleTokenRefresh,
-        onError: (error) {
-          _talker.warning('App Check token refresh error: $error');
-        },
-      );
-
-      // Request initial token
+      // Initialize App Check with appropriate provider based on build mode
       if (kDebugMode) {
-        final token = await FirebaseAppCheck.instance.getToken();
-        if (token != null) {
-          await _updateTokenTimestamp();
-          _talker.info('Initial debug token obtained');
-        }
+        _talker.info('Initializing App Check in debug mode');
+        await FirebaseAppCheck.instance.activate(
+          androidProvider: AndroidProvider.debug,
+        );
+
+        _tokenSubscription = FirebaseAppCheck.instance.onTokenChange.listen(
+          _handleTokenRefresh,
+          onError: (error) {
+            _talker.warning('App Check token refresh error: $error');
+          },
+        );
+      } else {
+        await FirebaseAppCheck.instance.activate(
+          androidProvider: AndroidProvider.playIntegrity,
+        );
       }
 
       _talker.info('App Check service initialized successfully');
     } catch (e) {
-      _talker.severe('Failed to initialize App Check service: $e');
-      rethrow;
+      _talker.severe('Failed to initialize App Check service', e);
+      if (!kDebugMode) rethrow;
     }
   }
 
@@ -76,7 +68,6 @@ class AppCheckService {
 
   Future<bool> validateToken() async {
     try {
-      // Check if we need to refresh the token
       final needsRefresh = await _needsTokenRefresh();
 
       if (needsRefresh) {
@@ -89,7 +80,6 @@ class AppCheckService {
         return false;
       }
 
-      // If we don't need a refresh, verify the existing token
       final token = await FirebaseAppCheck.instance.getToken();
       return token != null;
     } catch (e) {
@@ -115,30 +105,6 @@ class AppCheckService {
     }
   }
 
-  Future<Map<String, dynamic>> getTokenStatus() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final lastRefresh = prefs.getInt(_tokenTimestampKey);
-      final hasToken = await FirebaseAppCheck.instance.getToken() != null;
-
-      return {
-        'hasValidToken': hasToken,
-        'lastRefresh': lastRefresh != null
-            ? DateTime.fromMillisecondsSinceEpoch(lastRefresh)
-            : null,
-        'needsRefresh': await _needsTokenRefresh(),
-      };
-    } catch (e) {
-      _talker.severe('Error getting token status: $e');
-      return {
-        'hasValidToken': false,
-        'lastRefresh': null,
-        'needsRefresh': true,
-        'error': e.toString(),
-      };
-    }
-  }
-
   void dispose() {
     _tokenSubscription?.cancel();
     _tokenSubscription = null;
@@ -146,19 +112,8 @@ class AppCheckService {
   }
 }
 
-// Provider for app-wide access
 final appCheckServiceProvider = Provider<AppCheckService>((ref) {
   final service = AppCheckService();
   ref.onDispose(() => service.dispose());
   return service;
-});
-
-// Provider for monitoring token status
-final tokenStatusProvider = StreamProvider<Map<String, dynamic>>((ref) async* {
-  final service = ref.watch(appCheckServiceProvider);
-
-  while (true) {
-    yield await service.getTokenStatus();
-    await Future.delayed(const Duration(minutes: 5));
-  }
 });

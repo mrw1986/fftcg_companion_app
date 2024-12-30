@@ -157,40 +157,59 @@ class CardRepository {
             'Using cached cards. First card URL: ${localCards.first.lowResUrl}');
         final end = start + pageSize;
         if (start < localCards.length) {
-          return localCards.sublist(
+          final sublist = localCards.sublist(
               start, end > localCards.length ? localCards.length : end);
+          _talker.info(
+              'Loaded page $page with ${sublist.length} cards from cache');
+          return sublist;
         }
       }
 
       // If cache is empty or we need more cards, fetch from Firestore
-      final query = _firestore
+      Query query = _firestore
           .collection(_collectionName)
           .orderBy('name')
           .limit(pageSize);
 
       if (page > 0) {
-        // Get the last document from the previous page
-        final lastDoc = await _firestore
-            .collection(_collectionName)
-            .orderBy('name')
-            .limit(start)
-            .get()
-            .then((snap) => snap.docs.last);
+        try {
+          // Get the last document from the previous page
+          final previousPageQuery = _firestore
+              .collection(_collectionName)
+              .orderBy('name')
+              .limit(start);
 
-        query.startAfterDocument(lastDoc);
+          final previousPageDocs = await previousPageQuery.get();
+
+          if (previousPageDocs.docs.isNotEmpty) {
+            final lastDoc = previousPageDocs.docs.last;
+            query = query.startAfterDocument(lastDoc);
+          } else {
+            _talker.warning('No previous page documents found for page $page');
+            return [];
+          }
+        } catch (e) {
+          _talker.warning('Error getting last document for page $page: $e');
+          return [];
+        }
       }
 
       final snapshot = await query.get();
       final cards = snapshot.docs.map((doc) {
         final card = FFTCGCard.fromFirestore(doc);
-        _talker.info(
+        _talker.debug(
             'Loaded card ${card.cardNumber} with URLs - Low: ${card.lowResUrl}, High: ${card.highResUrl}');
         return card;
       }).toList();
 
-      // Cache the cards
-      await _hiveService.saveCards(cards);
+      // Only cache if we got a full page or it's the first page
+      if (cards.isNotEmpty && (cards.length == pageSize || page == 0)) {
+        await _hiveService.saveCards(cards);
+        _talker.info('Cached ${cards.length} cards from page $page');
+      }
 
+      _talker
+          .info('Loaded page $page with ${cards.length} cards from Firestore');
       return cards;
     } catch (e, stackTrace) {
       _talker.severe('Error getting cards page $page', e, stackTrace);
